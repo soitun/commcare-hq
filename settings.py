@@ -68,7 +68,8 @@ STATIC_ROOT = os.path.join(FILEPATH, 'staticfiles')
 
 STATICFILES_FINDERS = (
     "django.contrib.staticfiles.finders.FileSystemFinder",
-    "django.contrib.staticfiles.finders.AppDirectoriesFinder"
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+    "compressor.finders.CompressorFinder",
 )
 
 STATICFILES_DIRS = (
@@ -147,6 +148,8 @@ DEFAULT_APPS = (
     'django.contrib.markup',
     'gunicorn',
     'raven.contrib.django.raven_compat',
+    'compressor', # pip install django-compressor==1.3
+    'rax', # for sending static assets to rackspace
 )
 
 CRISPY_TEMPLATE_PACK = 'bootstrap'
@@ -559,6 +562,23 @@ if not DEBUG:
     TEMPLATE_LOADERS = [
         ('django.template.loaders.cached.Loader', TEMPLATE_LOADERS),
     ]
+
+####### Django Compressor Settings #######
+COMPRESS_PARSER = 'compressor.parser.BeautifulSoupParser'
+COMPRESS_PRECOMPILERS = (
+    ('text/less', 'lessc {infile}'),
+)
+COMPRESS_OFFLINE = True
+COMPRESS_STORAGE = 'rax.storage.RaxStorage'
+RAX = {
+    'USERNAME': os.environ.get('RAX_USERNAME', ""),
+    'API_KEY': os.environ.get('RAX_API_KEY', ""),
+    'REGION': os.environ.get('RAX_REGION', ""),
+    'CONTAINER': os.environ.get('RAX_CONTAINER', ""),
+}
+# STATICFILES_STORAGE = 'rax.storage.RaxStorage'
+STATIC_URL = 'http://f1d83f34fa8e9f8c6d10-f08eb0034667e90f388d5b69ba3fffba.r70.cf2.rackcdn.com/staticfiles/'
+# COMPRESS_ENABLED = True # defaults to "not DEBUG"
 
 ####### South Settings #######
 #SKIP_SOUTH_TESTS=True

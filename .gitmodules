@@ -88,6 +88,9 @@
 [submodule "submodules/pact-src"]
 	path = submodules/pact-src
 	url = git://github.com/dimagi/hq-pact.git
+[submodule "submodules/django-rax"]
+	path = submodules/django-rax
+	url = git://github.com/esoergel/django-rax.git
 [submodule "submodules/hqstyle-src"]
 	path = submodules/hqstyle-src
 	url = git://github.com/dimagi/hqstyle-src.git
