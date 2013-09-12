@@ -5,6 +5,7 @@ from dimagi.utils.decorators.memoized import memoized
 from corehq.apps.users.models import CouchUser, CommCareUser
 from dimagi.utils.couch.undo import UndoableDocument, DeleteDocRecord
 from django.conf import settings
+from dimagi.utils.logging import notify_exception
 
 
 class Group(UndoableDocument):
@@ -24,6 +25,21 @@ class Group(UndoableDocument):
 
     # custom data can live here
     metadata = DictProperty()
+
+    def save(self, **params):
+        super(Group, self).save(**params)
+
+        from corehq.apps.groups.signals import commcare_group_post_save
+        results = commcare_group_post_save.send_robust(sender='group', group=self)
+        for result in results:
+            # Second argument is None if there was no error
+            if result[1]:
+                notify_exception(
+                    None,
+                    message="Error occured while saving group%s: %s" %
+                            (self.name, str(result[1]))
+                )
+
 
     def add_user(self, couch_user_id, save=True):
         if not isinstance(couch_user_id, basestring):
@@ -211,3 +227,8 @@ class Group(UndoableDocument):
 class DeleteGroupRecord(DeleteDocRecord):
     def get_doc(self):
         return Group.get(self.doc_id)
+
+
+
+
+from .signals import *

@@ -40,6 +40,7 @@ class SyncWebUserTestCase(TestCase):
 
 class SyncCommCareUserTestCase(TestCase):
     def setUp(self):
+        print "calling setup"
         self.domain = 'test'
         self.username = "mr-danny@test.commcarehq.org"
         self.password = "s3cr3t"

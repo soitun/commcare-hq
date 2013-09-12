@@ -29,7 +29,7 @@ class CacheInvalidatePillow(BasicPillow):
         Where all the magic happens.
         """
 
-        doc_id = changes_dict['id']
+        doc_id = changes_dict.get('id', None) or changes_dict.get('_id', None) or ''
 
         if doc_id.startswith('pillowtop_corehq.pillows'):
             return None
@@ -41,11 +41,14 @@ class CacheInvalidatePillow(BasicPillow):
             #if deleted, see if we have the last doc
             doc = last_version if existed else {}
         else:
-            doc = self.couch_db.open_doc(changes_dict['id'])
+            if changes_dict.get('doc', None):
+                doc = changes_dict['doc']
+            else:
+                doc = self.couch_db.open_doc(changes_dict['id'])
 
         doc_type = doc.get('doc_type', None)
         base_doc = doc.get('base_doc', None)
-        pillow_logging.info("CacheInvalidate: received change event for doc_id: %s, doc_type: %s" % (doc_id, doc_type))
+        #pillow_logging.info("CacheInvalidate: received change event for doc_id: %s, doc_type: %s" % (doc_id, doc_type))
 
         if doc_type in ['Domain']:
             self.invalidate_domain_views()
@@ -85,7 +88,7 @@ class CacheInvalidatePillow(BasicPillow):
 
         stop = datetime.utcnow()
         duration = ms_from_timedelta(stop - start)
-        pillow_logging.info("CacheInvalidate: invalidate_views(%s) completed %d keys in %s ms" % (name, total_keys, duration))
+        #pillow_logging.info("CacheInvalidate: invalidate_views(%s) completed %d keys in %s ms" % (name, total_keys, duration))
 
     def invalidate_domain_views(self):
         """
@@ -111,7 +114,9 @@ class CacheInvalidatePillow(BasicPillow):
             "users/admins_by_domain",
             "users/by_org_and_team",
             "users/web_users_by_domain",
+            "users/by_username",
         ]
+        #print "invalidating users!"
         self.invalidate_views(user_views, name="users")
 
     def invalidate_groups(self):

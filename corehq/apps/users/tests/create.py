@@ -61,6 +61,7 @@ class CreateTestCase(TestCase):
         couch_user.add_domain_membership('domain2')
         self.assertEqual(couch_user.domain_memberships[1].domain, 'domain2')
         django_user = couch_user.get_django_user()
+        print "%s != %s" % (couch_user, CommCareUser.from_django_user(django_user))
         self.assertEqual(couch_user.user_id, CouchUser.from_django_user(django_user).user_id)
 
     def testDomainMemberships(self):
@@ -129,6 +130,7 @@ class CreateTestCase(TestCase):
         self.assertEqual(couch_user.device_ids[0], self.registering_device_id)
 
         django_user = couch_user.get_django_user()
+        print "%s != %s" % (couch_user, CommCareUser.from_django_user(django_user))
         self.assertEqual(couch_user.user_id, CouchUser.from_django_user(django_user).user_id)
 
         

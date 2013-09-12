@@ -1084,6 +1084,17 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
             django_user = self.sync_to_django_user()
             django_user.save()
 
+        print "firing couch_user save"
+        results = couch_user_post_save.send_robust(sender='couch_user', couch_user=self)
+        for result in results:
+            # Second argument is None if there was no error
+            if result[1]:
+                notify_exception(
+                    None,
+                    message="Error occured while saving couch_user %s: %s" %
+                            (self.username, str(result[1]))
+                )
+
         super(CouchUser, self).save(**params)
 
     @classmethod

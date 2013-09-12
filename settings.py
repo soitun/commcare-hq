@@ -223,6 +223,7 @@ HQ_APPS = (
     'corehq.apps.indicators',
     'corehq.couchapps',
     'custom.apps.wisepill',
+    'corehq.apps.cachehq',
     'fluff',
     'fluff.fluff_filter',
     'soil',
