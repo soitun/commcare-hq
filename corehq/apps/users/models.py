@@ -731,6 +731,10 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
     def full_name(self):
         return ("%s %s" % (self.first_name or '', self.last_name or '')).strip()
 
+    @property
+    def human_friendly_name(self):
+        return self.full_name if self.full_name else self.username
+
     formatted_name = full_name
     name = full_name
 
@@ -806,8 +810,9 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
                             'CommCareCase': 'case',
                             'CommConnectCase': 'case',
                         }[duplicate.owner_doc_type]
+                        from corehq.apps.users.views.mobile import EditCommCareUserView
                         url_ref, doc_id_param = {
-                            'user': ('user_account', 'couch_user_id'),
+                            'user': (EditCommCareUserView.urlname, 'couch_user_id'),
                             'case': ('case_details', 'case_id'),
                         }[doc_type]
                         dup_url = reverse(url_ref, kwargs={'domain': duplicate.domain, doc_id_param: duplicate.owner_id})
@@ -934,6 +939,15 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
             couch_user._id = old_couch_user.default_account.login_id
 
         return couch_user
+
+    @classmethod
+    def view(cls, view_name, classes=None, **params):
+        if cls is CouchUser:
+            classes = classes or {
+                'CommCareUser': CouchUser,
+                'WebUser': CouchUser,
+            }
+        return super(CouchUser, cls).view(view_name, classes=classes, **params)
 
     @classmethod
     def wrap_correctly(cls, source):
@@ -1090,7 +1104,7 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
     def is_deleted(self):
         return self.base_doc.endswith(DELETED_SUFFIX)
 
-    def get_viewable_reports(self, domain=None, name=True):
+    def get_viewable_reports(self, domain=None, name=True, slug=False):
         try:
             domain = domain or self.current_domain
         except AttributeError:
@@ -1105,12 +1119,25 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
             else:
                 models = self.get_domain_membership(domain).viewable_reports()
 
+            if slug:
+                return [to_function(m).slug for m in models]
             if name:
                 return [to_function(m).name for m in models]
-            else:
-                return models
+            return models
         except AttributeError:
             return []
+
+    def get_exportable_reports(self, domain=None):
+        viewable_reports = self.get_viewable_reports(domain=domain, slug=True)
+        from corehq.apps.data_interfaces.dispatcher import DataInterfaceDispatcher
+        export_reports = set(DataInterfaceDispatcher().get_reports_dict(domain).keys())
+        return list(export_reports.intersection(viewable_reports))
+
+    def can_export_data(self, domain=None):
+        can_see_exports = self.can_view_reports()
+        if not can_see_exports:
+            can_see_exports = bool(self.get_exportable_reports(domain))
+        return can_see_exports
 
     def is_current_web_user(self, request):
         return self.user_id == request.couch_user.user_id

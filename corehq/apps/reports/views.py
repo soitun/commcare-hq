@@ -6,8 +6,8 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.servers.basehttp import FileWrapper
 import os
+from corehq.apps.export.custom_export_helpers import CustomExportHelper
 from corehq.apps.reports import util
-from corehq.apps.reports.custom_export_helpers import CustomExportHelper
 from corehq.apps.reports.standard import inspect, export, ProjectReport
 from corehq.apps.reports.export import (
     ApplicationBulkExportHelper,
@@ -38,9 +38,7 @@ from dimagi.utils.decorators.datespan import datespan_in_request
 from casexml.apps.case.models import CommCareCase
 from corehq.apps.hqcase.export import export_cases_and_referrals
 from corehq.apps.users.models import CommCareUser
-from corehq.apps.reports.display import xmlns_to_name
-from couchexport.schema import build_latest_schema
-from couchexport.models import SavedExportSchema, Format, FakeSavedExportSchema, SavedBasicExport
+from couchexport.models import Format, FakeSavedExportSchema, SavedBasicExport
 from couchexport import views as couchexport_views
 from couchexport.shortcuts import export_data_shared, export_raw_data,\
     export_response
@@ -250,7 +248,8 @@ def _export_default_or_custom_data(request, domain, export_id=None, bulk_export=
     elif export_id:
         # this is a custom export
         try:
-            export_object = CustomExportHelper.make(request, domain, export_id).custom_export
+            export_type = request.GET.get('type', 'form')
+            export_object = CustomExportHelper.make(request, export_type, domain, export_id).custom_export
             if safe_only and not export_object.is_safe:
                 return HttpResponseForbidden()
         except ResourceNotFound:
@@ -292,63 +291,6 @@ def _export_default_or_custom_data(request, domain, export_id=None, bulk_export=
             messages.error(request, "Sorry, there was no data found for the tag '%s'." % export_object.name)
             return HttpResponseRedirect(next)
 
-@require_form_export_permission
-@login_and_domain_required
-def custom_export(req, domain):
-    """
-    Customize an export
-    """
-    try:
-        export_tag = [domain, json.loads(req.GET.get("export_tag", "null") or "null")]
-    except ValueError:
-        return HttpResponseBadRequest()
-
-    helper = CustomExportHelper.make(req, domain)
-
-    if req.method == "POST":
-        helper.update_custom_export()
-        messages.success(req, _("Custom export created!"))
-        return _redirect_to_export_home(helper.export_type, domain, ajax=True)
-
-    schema = build_latest_schema(export_tag)
-
-    if schema:
-        app_id = req.GET.get('app_id')
-        helper.custom_export = helper.ExportSchemaClass.default(
-            schema=schema,
-            name="%s: %s" % (
-                xmlns_to_name(domain, export_tag[1], app_id=app_id) if helper.export_type == "form" else export_tag[1],
-                datetime.utcnow().strftime("%Y-%m-%d")
-            ),
-            type=helper.export_type
-        )
-
-        if helper.export_type == 'form':
-            helper.custom_export.app_id = app_id
-        return helper.get_response()
-    else:
-        messages.warning(req, "<strong>No data found for that form "
-                      "(%s).</strong> Submit some data before creating an export!" % \
-                      xmlns_to_name(domain, export_tag[1], app_id=None), extra_tags="html")
-        return HttpResponseRedirect(export.ExcelExportReport.get_url(domain=domain))
-
-@require_form_export_permission
-@login_and_domain_required
-def edit_custom_export(req, domain, export_id):
-    """
-    Customize an export
-    """
-    try:
-        helper = CustomExportHelper.make(req, domain, export_id)
-    except ResourceNotFound:
-        raise Http404()
-    if req.method == "POST":
-        helper.update_custom_export()
-        messages.success(req, "Custom export saved!")
-        return _redirect_to_export_home(helper.export_type, domain, ajax=True)
-    else:
-        return helper.get_response()
-
 @login_or_digest
 @require_form_export_permission
 @require_GET
@@ -374,52 +316,27 @@ def export_all_form_metadata(req, domain):
 @login_or_digest
 @require_form_export_permission
 @require_GET
+@datespan_in_request(from_param="startdate", to_param="enddate")
 def export_all_form_metadata_async(req, domain):
+    datespan = req.datespan if req.GET.get("startdate") and req.GET.get("enddate") else None
+    group_id = req.GET.get("group")
+    ufilter =  FilterUsersField.get_user_filter(req)[0]
+    users = list(util.get_all_users_by_domain(domain=domain, group=group_id, user_filter=ufilter, simplified=True))
+    user_ids = filter(None, [u["user_id"] for u in users])
     format = req.GET.get("format", Format.XLS_2007)
     filename = "%s_forms" % domain
+
     download = DownloadBase()
     download.set_task(create_metadata_export.delay(
         download.download_id,
         domain,
         format=format,
         filename=filename,
+        datespan=datespan,
+        user_ids=user_ids,
     ))
     return download.get_start_response()
 
-
-
-@require_form_export_permission
-@login_and_domain_required
-@require_POST
-def delete_custom_export(req, domain, export_id):
-    """
-    Delete a custom export
-    """
-    try:
-        saved_export = SavedExportSchema.get(export_id)
-    except ResourceNotFound:
-        return HttpResponseRedirect(req.META['HTTP_REFERER'])
-    saved_export.delete()
-    messages.success(req, "Custom export was deleted.")
-    return _redirect_to_export_home(saved_export.type, domain)
-
-
-def _export_home(type, domain):
-    if type == 'form':
-        return export.ExcelExportReport.get_url(domain=domain)
-    elif type == 'case':
-        return export.CaseExportReport.get_url(domain=domain)
-    else:
-        raise ValueError(
-            'Export is supposed to have type form or case, has %s' % type
-        )
-
-def _redirect_to_export_home(type, domain, ajax=False):
-    url = _export_home(type, domain)
-    if not ajax:
-        return HttpResponseRedirect(url)
-    else:
-        return json_response({'redirect': url})
 
 def touch_saved_reports_views(user, domain):
     """
