@@ -1,8 +1,6 @@
 CommCare HQ
 ===========
 
-https://github.com/dimagi/commcare-hq
-
 `|Build Status| <https://travis-ci.org/dimagi/commcare-hq>`_
 `|Test coverage| <https://coveralls.io/r/dimagi/commcare-hq>`_
 
