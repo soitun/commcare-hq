@@ -1,3 +1,4 @@
+import os
 import time
 import requests
 from requests.auth import HTTPDigestAuth
@@ -5,18 +6,8 @@ from hq_settings import HQTransaction
 from datetime import datetime
 import uuid
 
-SUBMIT_TEMPLATE = """<?xml version='1.0'?>
-<data xmlns:jrm="http://dev.commcarehq.org/jr/xforms" xmlns="http://www.commcarehq.org/loadtest">
-    <meta>
-        <deviceID>multimechanize</deviceID>
-        <timeStart>%(timestart)s</timeStart>
-        <timeEnd>%(timeend)s</timeEnd>
-        <username>multimechanize</username>
-        <userID>multimechanize</userID>
-        <instanceID>%(instanceid)s</instanceID>
-    </meta>
-    %(extras)s
-</data>"""
+with open(os.path.join(os.path.dirname(__file__), 'data', '60k.xml')) as f:
+    SUBMIT_TEMPLATE = f.read()
 
 CASE_TEMPLATE = """
 <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="%(caseid)s"
