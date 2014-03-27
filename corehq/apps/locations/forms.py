@@ -178,7 +178,13 @@ class LocationCustomPropertiesSubForm(forms.Form):
         super(LocationCustomPropertiesSubForm, self).__init__(*args, **kwargs)
 
         for p in self.properties:
-            self.fields[p.name] = p.field(getattr(location, p.name, None))
+            current_value = getattr(location, p.name, None)
+
+            if current_value is None and p.name == 'site_code':
+                # default to a unique identifier
+                self.fields[p.name] = p.field(self.location.generate_site_code())
+            else:
+                self.fields[p.name] = p.field(current_value)
 
     def __getattr__(self, attr):
         for p in self.properties:

@@ -3,6 +3,8 @@ import itertools
 from dimagi.utils.couch.database import get_db, iter_docs
 from django import forms
 from django.core.urlresolvers import reverse
+from random import randint
+from dimagi.utils.decorators.memoized import memoized
 
 class Location(Document):
     domain = StringProperty()
@@ -58,6 +60,11 @@ class Location(Document):
             endkey=[domain, {}],
         ).all()])
         return (cls.wrap(l) for l in iter_docs(cls.get_db(), list(relevant_ids)))
+
+    @classmethod
+    @memoized
+    def site_codes_for_domain(cls, domain):
+        return [loc.site_code for loc in cls.by_domain(domain)]
 
     @classmethod
     def root_locations(cls, domain):
@@ -126,6 +133,25 @@ class Location(Document):
     def linked_supply_point(self):
         from corehq.apps.commtrack.models import SupplyPointCase
         return SupplyPointCase.get_by_location(self)
+
+    def generate_site_code(self):
+        """
+        Attempt to quickly generate a short and rememberable
+        but unique identifier for locations with no sms code.
+        """
+
+        locs = Location.site_codes_for_domain(self.domain)
+        for i in range(1000):
+            name = self.name or ''
+            suggested_code = name + str(randint(0, 99999)).zfill(4)
+            if suggested_code not in locs:
+                self.site_code = suggested_code
+                break
+        else:
+            # if somehow we fail to come up with something quickly, just use uuid
+            self.site_code = uuid.uuid4().hex
+
+        return self.site_code
 
 
 def root_locations(domain):
