@@ -319,6 +319,11 @@ class StockLevelsConfig(DocumentSchema):
     overstock_threshold = DecimalProperty(default=3)  # in months
 
 
+class ReportingRatesConfig(DocumentSchema):
+    cycle_start_index = IntegerProperty(default=1)
+    cycle_end_index = IntegerProperty(default=0)
+
+
 class OpenLMISConfig(DocumentSchema):
     # placeholder class for when this becomes fancier
     enabled = BooleanProperty(default=False)
@@ -374,6 +379,7 @@ class CommtrackConfig(Document):
     use_auto_consumption = BooleanProperty(default=False)
     consumption_config = SchemaProperty(ConsumptionConfig)
     stock_levels_config = SchemaProperty(StockLevelsConfig)
+    reporting_rates_config = SchemaProperty(ReportingRatesConfig)
     ota_restore_config = SchemaProperty(StockRestoreConfig)
     individual_consumption_defaults = BooleanProperty(default=False)
 

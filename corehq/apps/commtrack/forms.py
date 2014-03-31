@@ -106,9 +106,19 @@ class CommTrackSettingsForm(forms.Form):
         required=False
     )
 
+    reporting_cycle_start_index = forms.IntegerField(
+        label=ugettext_lazy("Day of month that the reporting window begins"),
+        initial=1,
+        required=False
+    )
+    reporting_cycle_end_index = forms.IntegerField(
+        label=ugettext_lazy("Day of month that the reporting window ends (enter '0' for the last day)"),
+        initial=0,
+        required=False,
+    )
+
     sync_location_fixtures = forms.BooleanField(
         label=ugettext_lazy("Sync location fixtures"), required=False)
-
     sync_consumption_fixtures = forms.BooleanField(
         label=ugettext_lazy("Sync consumption fixtures"), required=False)
 
@@ -148,6 +158,11 @@ class CommTrackSettingsForm(forms.Form):
                 'consumption_min_window',
                 'consumption_optimal_window',
                 'individual_consumption_defaults',
+            ),
+            Fieldset(
+                _('Reporting Rate Report Settings'),
+                'reporting_cycle_start_index',
+                'reporting_cycle_end_index',
             ),
             Fieldset(
                 _('Phone Settings'),

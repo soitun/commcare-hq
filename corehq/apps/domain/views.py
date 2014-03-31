@@ -1616,6 +1616,8 @@ class CommTrackSettingsView(BaseCommTrackAdminView):
             self.commtrack_settings.consumption_config.to_json().items()))
         initial.update(dict(('stock_' + k, v) for k, v in
             self.commtrack_settings.stock_levels_config.to_json().items()))
+        initial.update(dict(('reporting_' + k, v) for k, v in
+            self.commtrack_settings.reporting_rates_config.to_json().items()))
 
         if self.request.method == 'POST':
             return CommTrackSettingsForm(self.request.POST, initial=initial, domain=self.domain)
@@ -1666,6 +1668,15 @@ class CommTrackSettingsView(BaseCommTrackAdminView):
                 if data.get('consumption_' + field):
                     setattr(self.commtrack_settings.consumption_config, field,
                             data['consumption_' + field])
+
+            consumption_fields = ('cycle_start_index', 'cycle_end_index')
+            for field in consumption_fields:
+                if data.get('reporting_' + field) is not None:
+                    setattr(
+                        self.commtrack_settings.reporting_rates_config,
+                        field,
+                        data['reporting_' + field]
+                    )
 
             self.commtrack_settings.save()
             messages.success(request, _("Settings updated!"))
