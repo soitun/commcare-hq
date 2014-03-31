@@ -116,6 +116,11 @@ class CommTrackSettingsForm(forms.Form):
         initial=0,
         required=False,
     )
+    reporting_max_days_late = forms.IntegerField(
+        label=ugettext_lazy("Maximum number of days a report is considered late, instead of not reported"),
+        initial=0,
+        required=False,
+    )
 
     sync_location_fixtures = forms.BooleanField(
         label=ugettext_lazy("Sync location fixtures"), required=False)
@@ -163,6 +168,7 @@ class CommTrackSettingsForm(forms.Form):
                 _('Reporting Rate Report Settings'),
                 'reporting_cycle_start_index',
                 'reporting_cycle_end_index',
+                'reporting_max_days_late',
             ),
             Fieldset(
                 _('Phone Settings'),

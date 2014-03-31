@@ -1,11 +1,12 @@
 from corehq.apps.commtrack.util import num_periods_late
 from dimagi.utils.decorators.memoized import memoized
 from corehq.apps.locations.models import Location
-from corehq.apps.commtrack.models import Product, SupplyPointCase, StockState
+from corehq.apps.commtrack.models import Product, SupplyPointCase, StockState, CommtrackConfig
 from corehq.apps.domain.models import Domain
 from dimagi.utils.couch.loosechange import map_reduce
 from corehq.apps.reports.api import ReportDataSource
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from calendar import monthrange
 from casexml.apps.stock.models import StockTransaction
 from couchforms.models import XFormInstance
 from django.db.models import Sum, Avg
@@ -13,26 +14,33 @@ from corehq.apps.reports.commtrack.util import get_relevant_supply_point_ids, pr
 from corehq.apps.reports.commtrack.const import STOCK_SECTION_TYPE
 from casexml.apps.stock.utils import months_of_stock_remaining, stock_category
 
-# TODO make settings
 from corehq.apps.reports.standard.monitoring import MultiFormDrilldownMixin
 
-REPORTING_PERIOD = 'weekly'
-REPORTING_PERIOD_ARGS = (1,)
 
-
-def is_timely(case, limit=0):
-    return num_periods_late(case, REPORTING_PERIOD, *REPORTING_PERIOD_ARGS) <= limit
-
-def reporting_status(transaction, start_date, end_date):
+def reporting_status(transaction, start_date, end_date, config):
     if transaction:
         last_reported = transaction.report.date.date()
     else:
-        last_reported = None
+        return 'nonreporting'
 
-    if last_reported and last_reported < start_date:
-        return 'ontime'
-    elif last_reported and start_date <= last_reported <= end_date:
-        return 'late'
+    year, month = end_date.year, end_date.month
+
+    start = date(year, month, config.cycle_start_index)
+
+    if config.cycle_end_index > 0:
+        end = date(year, month, config.cycle_end_index)
+    else:
+        end = date(year, month, monthrange(year, month)[1] - 1)
+
+    if last_reported > start:
+        how_late = (last_reported - end).days
+
+        if how_late <= 0:
+            return 'ontime'
+        elif how_late < config.max_days_late:
+            return 'late'
+        else:
+            return 'nonreporting'
     else:
         return 'nonreporting'
 
@@ -284,7 +292,10 @@ class ReportingStatusDataSource(ReportDataSource, CommtrackDataSourceMixin, Mult
             loc = SupplyPointCase.get(sp_id).location
             transactions = StockTransaction.objects.filter(
                 case_id=sp_id,
-                section_id=STOCK_SECTION_TYPE,
+            ).exclude(
+                report__date__lte=self.start_date
+            ).exclude(
+                report__date__gte=self.end_date
             )
 
             if transactions:
@@ -310,7 +321,8 @@ class ReportingStatusDataSource(ReportDataSource, CommtrackDataSourceMixin, Mult
                             'reporting_status': reporting_status(
                                 last_transaction,
                                 self.start_date,
-                                self.end_date
+                                self.end_date,
+                                CommtrackConfig.for_domain(self.domain).reporting_rates_config
                             ),
                             'geo': loc._geopoint,
                         }

@@ -1669,7 +1669,11 @@ class CommTrackSettingsView(BaseCommTrackAdminView):
                     setattr(self.commtrack_settings.consumption_config, field,
                             data['consumption_' + field])
 
-            consumption_fields = ('cycle_start_index', 'cycle_end_index')
+            consumption_fields = (
+                'cycle_start_index',
+                'cycle_end_index',
+                'max_days_late'
+            )
             for field in consumption_fields:
                 if data.get('reporting_' + field) is not None:
                     setattr(

@@ -322,6 +322,7 @@ class StockLevelsConfig(DocumentSchema):
 class ReportingRatesConfig(DocumentSchema):
     cycle_start_index = IntegerProperty(default=1)
     cycle_end_index = IntegerProperty(default=0)
+    max_days_late = IntegerProperty(default=0)
 
 
 class OpenLMISConfig(DocumentSchema):
