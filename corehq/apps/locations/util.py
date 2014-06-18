@@ -57,85 +57,6 @@ def allowed_child_types(domain, parent):
 
 # hard-coded for now
 def location_custom_properties(domain, loc_type):
-    def _village_classes(domain):
-        # todo: meh.
-        if is_psi_domain(domain):
-            return [
-                _('Town'),
-                _('A'),
-                _('B'),
-                _('C'),
-                _('D'),
-                _('E'),
-            ]
-        else:
-            return [
-                _('Village'),
-                _('City'),
-                _('Town'),
-                _('Hamlet'),
-            ]
-    hardcoded = {
-        'outlet': [
-            CustomProperty(
-                name='outlet_type',
-                datatype='Choice',
-                label='Outlet Type',
-                required=True,
-                choices={'mode': 'static', 'args': [
-                        'CHC',
-                        'PHC',
-                        'SC',
-                        'MBBS',
-                        'Pediatrician',
-                        'AYUSH',
-                        'Medical Store / Chemist',
-                        'RP',
-                        'Asha',
-                        'AWW',
-                        'NGO',
-                        'CBO',
-                        'SHG',
-                        'Pan Store',
-                        'General Store',
-                        'Other',
-                    ]},
-            ),
-            CustomProperty(
-                name='outlet_type_other',
-                label='Outlet Type (Other)',
-            ),
-            CustomProperty(
-                name='address',
-                label='Address',
-            ),
-            CustomProperty(
-                name='landmark',
-                label='Landmark',
-            ),
-            CustomProperty(
-                name='contact_name',
-                label='Contact Name',
-            ),
-            CustomProperty(
-                name='contact_phone',
-                label='Contact Phone',
-            ),
-        ],
-        'village': [
-            CustomProperty(
-                name='village_size',
-                datatype='Integer',
-                label='Village Size',
-            ),
-            CustomProperty(
-                name='village_class',
-                datatype='Choice',
-                label='Village Class',
-                choices={'mode': 'static', 'args': _village_classes(domain)},
-            ),
-        ],
-    }
     prop_site_code = CustomProperty(
         name='site_code',
         label='SMS Code',
@@ -143,11 +64,7 @@ def location_custom_properties(domain, loc_type):
         unique='global',
     )
 
-    try:
-        properties = hardcoded[loc_type]
-    except KeyError:
-        properties = []
-
+    properties = []
     loc_config = get_loc_config(domain)
     if not loc_config[loc_type].administrative:
         properties.insert(0, prop_site_code)
