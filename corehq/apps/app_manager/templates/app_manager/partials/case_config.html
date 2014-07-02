@@ -63,7 +63,8 @@
                          {value: 'open', label: '{{ registers_case|escapejs }}'},
                          {value: 'update', label: '{{ updates_case|escapejs }}'},
                          {value: 'open-other', label: '{{ different_module|escapejs }}'}],
-                value: actionType
+                value: actionType,
+                enable: {% if edit %} true {% else %} false {% endif %}
             "></select>
         </div>
         <div data-bind="if: actionType() === 'update'">
