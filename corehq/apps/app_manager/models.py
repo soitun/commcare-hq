@@ -1260,6 +1260,7 @@ class Module(ModuleBase):
     Translates to a top-level menu on the phone.
 
     """
+    module_type = 'basic'
     case_label = DictProperty()
     referral_label = DictProperty()
     forms = SchemaListProperty(Form)
@@ -1488,12 +1489,6 @@ class AdvancedForm(IndexedFormBase, NavMenuItemMediaMixin):
             except ValueError:
                 errors.append({'type': 'circular ref', 'case_tag': action.case_tag})
 
-            if isinstance(action, LoadUpdateAction) and \
-                    action.auto_select and action.auto_select.mode == AUTO_SELECT_CASE:
-                case_tag = action.auto_select.value_source
-                if not self.actions.get_action_from_tag(case_tag):
-                    errors.append({'type': 'auto select ref', 'case_tag': action.case_tag})
-
             errors.extend(self.check_case_properties(
                 subcase_names=action.get_property_names(),
                 case_tag=action.case_tag
@@ -1503,10 +1498,20 @@ class AdvancedForm(IndexedFormBase, NavMenuItemMediaMixin):
             if not action.case_type and (not isinstance(action, LoadUpdateAction) or not action.auto_select):
                 errors.append({'type': "no case type in action", 'case_tag': action.case_tag})
 
+            if isinstance(action, LoadUpdateAction) and \
+                    action.auto_select and action.auto_select.mode == AUTO_SELECT_CASE:
+                case_tag = action.auto_select.value_source
+                if not self.actions.get_action_from_tag(case_tag):
+                    errors.append({'type': 'auto select ref', 'case_tag': action.case_tag})
+
             errors.extend(self.check_case_properties(
                 all_names=action.get_property_names(),
                 case_tag=action.case_tag
             ))
+
+        if self.form_filter:
+            if not any(action for action in self.actions.load_update_cases if not action.auto_select):
+                errors.append({'type': "filtering without case"})
 
         def generate_paths():
             for action in self.actions.get_all_actions():
@@ -1559,6 +1564,7 @@ class AdvancedForm(IndexedFormBase, NavMenuItemMediaMixin):
 
 
 class AdvancedModule(ModuleBase):
+    module_type = 'advanced'
     case_label = DictProperty()
     forms = SchemaListProperty(AdvancedForm)
     case_details = SchemaProperty(DetailPair)
@@ -1886,6 +1892,7 @@ class CareplanModule(ModuleBase):
     """
     A set of forms and configuration for managing the Care Plan workflow.
     """
+    module_type = 'careplan'
     parent_select = SchemaProperty(ParentSelect)
 
     display_separately = BooleanProperty(default=False)
@@ -2763,7 +2770,7 @@ class Application(ApplicationBase, TranslationMixin, HQMediaMixin):
             form.validation_cache = None
             form.version = None
 
-        app.broken_build = False
+        app.build_broken = False
 
         return app
 
@@ -3241,7 +3248,11 @@ class Application(ApplicationBase, TranslationMixin, HQMediaMixin):
 
     @classmethod
     def get_by_xmlns(cls, domain, xmlns):
-        r = get_db().view('exports_forms/by_xmlns', key=[domain, {}, xmlns], group=True).one()
+        r = cls.get_db().view('exports_forms/by_xmlns',
+            key=[domain, {}, xmlns],
+            group=True,
+            stale=settings.COUCH_STALE_QUERY,
+        ).one()
         return cls.get(r['value']['app']['id']) if r and 'app' in r['value'] else None
 
     def get_profile_setting(self, s_type, s_id):
