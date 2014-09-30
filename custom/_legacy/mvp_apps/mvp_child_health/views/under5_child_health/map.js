@@ -13,13 +13,14 @@ function(doc) {
 
                 var fever_medication = indicators.fever_medication.value,
                     diarrhea_medication = indicators.diarrhea_medication.value,
-                    rdt_result = indicators.rdt_result.value,
+                    rdt_result = (typeof indicators.rdt_result.value === 'string') ? indicators.rdt_result.value.toLowerCase() : indicators.rdt_result.value,
                     referral_type = indicators.referral_type.value;
 
                 var rdt_test_received = (rdt_result === 'positive' || rdt_result === 'negative'),
                     rdt_test_positive = (rdt_result === 'positive'),
                     rdt_test_negative = (rdt_result === 'negative'),
-                    rdt_not_available = (rdt_result === 'rdt_not_available' || rdt_result === 'rdt_not_conducted'),
+                    rdt_not_available = (rdt_result === 'rdt_not_available'
+                                         || rdt_result === 'not_available' || rdt_result === 'rdt_not_conducted'),
                     uncomplicated_fever = false,
                     complicated_fever = false,
                     diarrhea_only = false,
@@ -30,7 +31,7 @@ function(doc) {
 
                 var danger_signs = [],
                     emergency_signs = [],
-                    valid_referrals = ['emergency', 'basic', 'convenient', 'take_to_clinic'];
+                    valid_referrals = ['emergency', 'basic', 'take_to_clinic'];
 
                 try {
                     danger_signs = get_danger_signs(indicators.immediate_danger_sign.value);
@@ -51,7 +52,7 @@ function(doc) {
                         complicated_fever = true;
                     }
                 }
-                if ((danger_signs.indexOf('diarrhea') >= 0 && danger_signs.length === 1) || 
+                if ((danger_signs.indexOf('diarrhea') >= 0 && danger_signs.length === 1) ||
                     (danger_signs.indexOf('sign_diarrhea') >= 0 && danger_signs.length === 1)) {
                     diarrhea_only = true;
                 }
@@ -63,7 +64,7 @@ function(doc) {
 
                 var category = "",
                     category_keys = [];
-                if (uncomplicated_fever && meta.timeEnd) {
+                if (uncomplicated_fever && meta.timeEnd && age > 180*MS_IN_DAY) {
                     category = "under5_fever ";
                     if (rdt_test_received)
                         category_keys.push('rdt_test_received');
@@ -87,7 +88,7 @@ function(doc) {
                         category_keys.push('referred');
                     }
 
-                } else if (diarrhea_only && meta.timeEnd) {
+                } else if (diarrhea_only && meta.timeEnd && age > 60*MS_IN_DAY) {
                     category = "under5_diarrhea ";
 
                     if (diarrhea_medication_received)

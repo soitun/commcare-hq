@@ -1,6 +1,8 @@
+from collections import namedtuple
 from datetime import datetime, timedelta
 import logging
 import math
+import warnings
 
 from django.contrib import messages
 from django.http import Http404
@@ -21,6 +23,7 @@ from dimagi.utils.couch.database import get_db
 from dimagi.utils.dates import DateSpan
 from corehq.apps.domain.models import Domain
 from corehq.apps.users.models import WebUser
+from dimagi.utils.decorators.memoized import memoized
 from dimagi.utils.parsing import string_to_datetime, string_to_utc_datetime
 from dimagi.utils.timezones import utils as tz_utils
 from dimagi.utils.web import json_request
@@ -118,7 +121,7 @@ def get_all_users_by_domain(domain=None, group=None, user_ids=None,
             raise Http404()
     else:
         if not user_filter:
-            user_filter = HQUserType.use_defaults()
+            user_filter = HQUserType.all()
         users = []
         submitted_user_ids = get_all_userids_submitted(domain)
         registered_user_ids = dict([(user.user_id, user) for user in CommCareUser.by_domain(domain)])
@@ -188,6 +191,45 @@ def get_username_from_forms(domain, user_id):
     return username
 
 
+def namedtupledict(name, fields):
+    cls = namedtuple(name, fields)
+
+    def __getitem__(self, item):
+        if isinstance(item, basestring):
+            warnings.warn(
+                "namedtuple fields should be accessed as attributes",
+                DeprecationWarning,
+            )
+            return getattr(self, item)
+        return cls.__getitem__(self, item)
+
+    def get(self, item, default=None):
+        warnings.warn(
+            "namedtuple fields should be accessed as attributes",
+            DeprecationWarning,
+        )
+        return getattr(self, item, default)
+    # return a subclass of cls that has the above __getitem__
+    return type(name, (cls,), {
+        '__getitem__': __getitem__,
+        'get': get,
+    })
+
+
+class SimplifiedUserInfo(
+        namedtupledict('SimplifiedUserInfo', (
+            'user_id',
+            'username_in_report',
+            'raw_username',
+            'is_active',
+        ))):
+
+    @property
+    @memoized
+    def group_ids(self):
+        return Group.by_user(self.user_id, False)
+
+
 def _report_user_dict(user):
     """
     Accepts a user object or a dict such as that returned from elasticsearch.
@@ -195,8 +237,10 @@ def _report_user_dict(user):
     ['_id', 'username', 'first_name', 'last_name', 'doc_type', 'is_active']
     """
     if not isinstance(user, dict):
-        user_report_attrs = ['user_id', 'username_in_report', 'raw_username', 'is_active']
-        return dict([(attr, getattr(user, attr)) for attr in user_report_attrs])
+        user_report_attrs = ['user_id', 'username_in_report', 'raw_username',
+                             'is_active']
+        return SimplifiedUserInfo(**{attr: getattr(user, attr)
+                                     for attr in user_report_attrs})
     else:
         username = user.get('username', '')
         raw_username = (username.split("@")[0]
@@ -210,13 +254,12 @@ def _report_user_dict(user):
             if full_name:
                 yield u' "%s"' % html.escape(full_name)
         username_in_report = safestring.mark_safe(''.join(parts()))
-        report_dict = {
-            'user_id': user.get('_id', ''),
-            'username_in_report': username_in_report,
-            'raw_username': raw_username,
-            'is_active': user.get('is_active', None),
-        }
-        return report_dict
+        return SimplifiedUserInfo(
+            user_id=user.get('_id', ''),
+            username_in_report=username_in_report,
+            raw_username=raw_username,
+            is_active=user.get('is_active', None)
+        )
 
 
 def format_datatables_data(text, sort_key, raw=None):
@@ -301,6 +344,14 @@ def group_filter(doc, group):
         return True
 
 
+def users_matching_filter(domain, user_filters):
+    return [
+        user.user_id
+        for user in get_all_users_by_domain(
+            domain, user_filter=user_filters, simplified=True)
+    ]
+
+
 def create_export_filter(request, domain, export_type='form'):
     from corehq.apps.reports.filters.users import UserTypeFilter
     app_id = request.GET.get('app_id', None)
@@ -311,9 +362,9 @@ def create_export_filter(request, domain, export_type='form'):
 
     if export_type == 'case':
         if user_filters and use_user_filters:
-            users_matching_filter = map(lambda x: x.get('user_id'), get_all_users_by_domain(domain,
-                user_filter=user_filters, simplified=True))
-            filter = SerializableFunction(case_users_filter, users=users_matching_filter)
+            filtered_users = users_matching_filter(domain, user_filters)
+            filter = SerializableFunction(case_users_filter,
+                                          users=filtered_users)
         else:
             filter = SerializableFunction(case_group_filter, group=group)
     else:
@@ -323,9 +374,8 @@ def create_export_filter(request, domain, export_type='form'):
             datespan.set_timezone(get_timezone(request.couch_user, domain))
             filter &= SerializableFunction(datespan_export_filter, datespan=datespan)
         if user_filters and use_user_filters:
-            users_matching_filter = map(lambda x: x.get('user_id'), get_all_users_by_domain(domain,
-                user_filter=user_filters, simplified=True))
-            filter &= SerializableFunction(users_filter, users=users_matching_filter)
+            filtered_users = users_matching_filter(domain, user_filters)
+            filter &= SerializableFunction(users_filter, users=filtered_users)
         else:
             filter &= SerializableFunction(group_filter, group=group)
     return filter
@@ -352,19 +402,6 @@ def get_possible_reports(domain_name):
                 })
     return reports
 
-
-def format_relative_date(date, tz=pytz.utc):
-    #todo cleanup
-    now = datetime.now(tz=tz)
-    time = datetime.replace(date, tzinfo=tz)
-    dtime = now - time
-    if dtime.days < 1:
-        dtext = "Today"
-    elif dtime.days < 2:
-        dtext = "Yesterday"
-    else:
-        dtext = "%s days ago" % dtime.days
-    return format_datatables_data(dtext, dtime.days)
 
 def friendly_timedelta(td):
     hours, remainder = divmod(td.seconds, 3600)
@@ -470,3 +507,11 @@ def make_ctable_table_name(name):
         return '{0}_{1}'.format(settings.CTABLE_PREFIX, name)
 
     return name
+
+
+def is_mobile_worker_with_report_access(couch_user, domain):
+    return (
+        couch_user.is_commcare_user
+        and domain is not None
+        and Domain.get_by_name(domain).default_mobile_worker_redirect == 'reports'
+    )

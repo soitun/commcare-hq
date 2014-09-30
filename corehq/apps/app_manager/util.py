@@ -1,6 +1,7 @@
 import functools
 import json
 import itertools
+from couchdbkit.exceptions import DocTypeError
 from corehq import Domain
 from corehq.apps.app_manager.const import CT_REQUISITION_MODE_3, CT_LEDGER_STOCK, CT_LEDGER_REQUESTED, CT_REQUISITION_MODE_4, CT_LEDGER_APPROVED, CT_LEDGER_PREFIX
 from corehq.apps.app_manager.xform import XForm, XFormError, parse_xml
@@ -120,7 +121,7 @@ class ParentCasePropertyBuilder(object):
         case_properties = set(self.defaults)
 
         for m_case_type, form in self.forms_info:
-            case_properties.update(form.get_case_updates(case_type))
+            case_properties.update(self.get_case_updates(form, case_type))
 
         parent_types, contributed_properties = \
             self.get_parent_types_and_contributed_properties(case_type)
@@ -130,6 +131,10 @@ class ParentCasePropertyBuilder(object):
                 case_properties.add('%s/%s' % (parent_type[1], property))
 
         return case_properties
+
+    @memoized
+    def get_case_updates(self, form, case_type):
+        return form.get_case_updates(case_type)
 
     def get_case_property_map(self, case_types):
         case_types = sorted(case_types)
@@ -213,12 +218,15 @@ def is_sort_only_column(column):
 
 def get_correct_app_class(doc):
     from corehq.apps.app_manager.models import Application, RemoteApp
-    return {
-        'Application': Application,
-        'Application-Deleted': Application,
-        "RemoteApp": RemoteApp,
-        "RemoteApp-Deleted": RemoteApp,
-    }[doc['doc_type']]
+    try:
+        return {
+            'Application': Application,
+            'Application-Deleted': Application,
+            "RemoteApp": RemoteApp,
+            "RemoteApp-Deleted": RemoteApp,
+        }[doc['doc_type']]
+    except KeyError:
+        raise DocTypeError()
 
 
 def all_apps_by_domain(domain):

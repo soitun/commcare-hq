@@ -20,7 +20,10 @@ class OriginalBranch(object):
         return self.original_branch
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.git.checkout(self.original_branch)
+        try:
+            self.git.checkout(self.original_branch)
+        except Exception as err:
+            print "cannot checkout '{}': {}".format(self.original_branch, err)
 
 
 def git_current_branch(git=None):
@@ -30,6 +33,15 @@ def git_current_branch(git=None):
     if branch.startswith('('):
         branch = git.log('--pretty=oneline', n=1).strip().split(' ')[0]
     return branch
+
+
+def git_submodules(git=None):
+    git = git or get_git()
+    submodules = []
+    for line in git.submodule().split('\n')[:-1]:
+        path = line[1:].split()[1]
+        submodules.append(path)
+    return submodules
 
 
 def git_check_merge(branch1, branch2, git=None):

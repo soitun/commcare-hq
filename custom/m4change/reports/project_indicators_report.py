@@ -1,15 +1,16 @@
 from django.utils.translation import ugettext as _
+
 from corehq.apps.reports.datatables import DataTablesHeader, DataTablesColumn
 from corehq.apps.reports.filters.fixtures import AsyncLocationFilter
 from corehq.apps.reports.filters.select import MonthFilter, YearFilter
-from corehq.apps.reports.standard import MonthYearMixin, CustomProjectReport
+from corehq.apps.reports.standard import MonthYearMixin
 from corehq.apps.reports.standard.cases.basic import CaseListReport
 from custom.m4change.reports import validate_report_parameters, get_location_hierarchy_by_id
 from custom.m4change.reports.reports import M4ChangeReport
 from custom.m4change.reports.sql_data import ProjectIndicatorsCaseSqlData
 
 
-class ProjectIndicatorsReport(MonthYearMixin, CustomProjectReport, CaseListReport, M4ChangeReport):
+class ProjectIndicatorsReport(MonthYearMixin, CaseListReport, M4ChangeReport):
     ajax_pagination = False
     asynchronous = True
     exportable = True
@@ -70,6 +71,31 @@ class ProjectIndicatorsReport(MonthYearMixin, CustomProjectReport, CaseListRepor
             "women_delivering_within_6_weeks_attending_pnc_total": {
                 "s/n": 32,
                 "label": _("Number of women who attended PNC within 6 weeks of delivery"),
+                "value": 0
+            },
+            "number_of_free_sims_given_total": {
+                "s/n": 33,
+                "label": _("Number of free sim cards given"),
+                "value": 0
+            },
+            "mno_mtn_total": {
+                "s/n": 34,
+                "label": _("Number of MTN MNO"),
+                "value": 0
+            },
+            "mno_etisalat_total": {
+                "s/n": 35,
+                "label": _("Number of Etisalat MNO"),
+                "value": 0
+            },
+            "mno_glo_total": {
+                "s/n": 36,
+                "label": _("Number of GLO MNO"),
+                "value": 0
+            },
+            "mno_airtel_total": {
+                "s/n": 37,
+                "label": _("Number of Airtel MNO"),
                 "value": 0
             }
         }

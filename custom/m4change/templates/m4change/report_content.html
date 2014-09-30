@@ -2,6 +2,7 @@
 {% load url from future %}
 {% load hq_shared_tags %}
 {% load report_tags %}
+{% load compress %}
 {% load i18n %}
 
 {% block pretable %}
@@ -25,4 +26,12 @@
                  alt="pathfinder_international_logo"/>
         </div>
     </div>
+{% endblock %}
+
+{% block reportcontent %}
+    {% compress css %}
+    <link type="text/less" rel="stylesheet" media="all" href="{% static 'style/less/hqstyle-core.less' %}"/>
+    {% endcompress %}
+    <link rel="stylesheet" href="{% static 'm4change/css/reports.css' %}"/>
+    {{ block.super }}
 {% endblock %}

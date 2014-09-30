@@ -7,7 +7,7 @@ from django.utils.translation import ugettext_lazy as _
 from corehq import Domain, privileges
 from corehq.apps.accounting.exceptions import AccountingError
 from dimagi.utils.dates import add_months
-from django_prbac.models import Role
+from django_prbac.models import Role, UserRole
 
 
 EXCHANGE_RATE_DECIMAL_PLACES = 9
@@ -135,23 +135,26 @@ def get_money_str(amount):
 def get_address_from_invoice(invoice):
     from corehq.apps.accounting.invoice_pdf import Address
     from corehq.apps.accounting.models import BillingContactInfo
-    contact_info = BillingContactInfo.objects.get(
-        account=invoice.subscription.account,
-    )
-    return Address(
-        name=(
-            "%s %s" %
-            (contact_info.first_name
-             if contact_info.first_name is not None else "",
-             contact_info.last_name
-             if contact_info.last_name is not None else "")
-        ),
-        first_line=contact_info.first_line,
-        second_line=contact_info.second_line,
-        city=contact_info.city,
-        region=contact_info.state_province_region,
-        country=contact_info.country,
-    )
+    try:
+        contact_info = BillingContactInfo.objects.get(
+            account=invoice.subscription.account,
+        )
+        return Address(
+            name=(
+                "%s %s" %
+                (contact_info.first_name
+                 if contact_info.first_name is not None else "",
+                 contact_info.last_name
+                 if contact_info.last_name is not None else "")
+            ),
+            first_line=contact_info.first_line,
+            second_line=contact_info.second_line,
+            city=contact_info.city,
+            region=contact_info.state_province_region,
+            country=contact_info.country,
+        )
+    except BillingContactInfo.DoesNotExist:
+        return Address()
 
 
 def get_dimagi_from_email_by_product(product):
@@ -188,3 +191,14 @@ def get_customer_cards(account, username, domain):
     except (PaymentMethod.DoesNotExist, BillingAccountAdmin.DoesNotExist):
         pass
     return None
+
+
+def is_accounting_admin(user):
+    roles = Role.objects.filter(slug=privileges.ACCOUNTING_ADMIN)
+    if not roles:
+        return False
+    accounting_privilege = roles[0].instantiate({})
+    try:
+        return user.prbac_role.has_privilege(accounting_privilege)
+    except (AttributeError, UserRole.DoesNotExist):
+        return False

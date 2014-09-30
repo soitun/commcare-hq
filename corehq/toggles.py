@@ -2,7 +2,6 @@ from functools import wraps
 from django.http import Http404
 from toggle.shortcuts import toggle_enabled
 
-
 class StaticToggle(object):
     def __init__(self, slug, label, namespaces=None):
         self.slug = slug
@@ -49,7 +48,7 @@ APP_BUILDER_CAREPLAN = StaticToggle(
 
 APP_BUILDER_ADVANCED = StaticToggle(
     'advanced-app-builder',
-    'Advanced / CommTrack module'
+    'Advanced Module in App-Builder'
 )
 
 APP_BUILDER_INCLUDE_MULTIMEDIA_ODK = StaticToggle(
@@ -68,6 +67,12 @@ ACCOUNTING_PREVIEW = StaticToggle(
     [NAMESPACE_DOMAIN, NAMESPACE_USER]
 )
 
+BOOTSTRAP3_PREVIEW = StaticToggle(
+    'bootstrap3_preview',
+    'Bootstrap 3 Preview',
+    [NAMESPACE_USER]
+)
+
 INVOICE_TRIGGER = StaticToggle(
     'invoice_trigger',
     'Accounting Trigger Invoices',
@@ -84,8 +89,33 @@ REMINDERS_UI_PREVIEW = StaticToggle(
     'New reminders UI'
 )
 
-READABLE_FORM_DATA = StaticToggle(
-    'readable_form_data',
-    'Readable Form Data Page',
+CASE_REBUILD = StaticToggle(
+    'case_rebuild',
+    'Show UI-based case rebuild option',
+)
+
+IS_DEVELOPER = StaticToggle(
+    'is_developer',
+    'Is developer'
+)
+
+PATHWAYS_PREVIEW = StaticToggle(
+    'pathways_preview',
+    'Is Pathways preview'
+)
+
+CUSTOM_PRODUCT_DATA = StaticToggle(
+    'custom_product_data',
+    'Custom Product Data',
     [NAMESPACE_DOMAIN, NAMESPACE_USER]
+)
+
+MM_CASE_PROPERTIES = StaticToggle(
+    'mm_case_properties',
+    'Multimedia Case Properties',
+)
+
+DASHBOARD_PREVIEW = StaticToggle(
+    'dashboard_preview',
+    'HQ Dashboard Preview'
 )

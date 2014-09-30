@@ -17,6 +17,7 @@ FULFILLMENT_CASE_TYPE = 'commtrack-fulfillment'
 RECEIVED_CASE_TYPE = 'commtrack-received'
 ORDER_CASE_TYPE = 'commtrack-order'
 
+DAYS_IN_MONTH = 30.0
 
 def is_commtrack_case(case):
     return case.type in [
@@ -46,6 +47,7 @@ RequisitionActions = enum(
     REQUEST='request',
     APPROVAL='approval',
     FULFILL='fulfill',
+    PACK='pack',  # todo: pack and fulfill are the same thing but both are used. should reconcile
     RECEIPTS='requisition-receipts',
 )
 
@@ -54,6 +56,7 @@ ORDERED_REQUISITION_ACTIONS = (
     RequisitionActions.REQUEST,
     RequisitionActions.APPROVAL,
     RequisitionActions.FULFILL,
+    RequisitionActions.PACK,
     RequisitionActions.RECEIPTS,
 )
 

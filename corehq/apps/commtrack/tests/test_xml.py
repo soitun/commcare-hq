@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.test.utils import override_settings
 from lxml import etree
 import os
 import random
@@ -9,7 +10,7 @@ from casexml.apps.case.xml import V2
 from casexml.apps.phone.restore import RestoreConfig
 from casexml.apps.phone.tests.utils import synclog_id_from_restore_payload
 from corehq.apps.commtrack.models import ConsumptionConfig, StockRestoreConfig, RequisitionCase, Product, StockState
-from corehq.apps.consumption.shortcuts import set_default_consumption_for_domain
+from corehq.apps.consumption.shortcuts import set_default_monthly_consumption_for_domain
 from couchforms.models import XFormInstance
 from dimagi.utils.parsing import json_format_datetime
 from casexml.apps.stock import const as stockconst
@@ -20,6 +21,7 @@ from casexml.apps.case.tests.util import check_xml_line_by_line, check_user_has_
 from corehq.apps.hqcase.utils import get_cases_in_domain
 from corehq.apps.receiverwrapper import submit_form_locally
 from corehq.apps.commtrack.tests.util import make_loc, make_supply_point
+from corehq.apps.commtrack.const import DAYS_IN_MONTH
 from corehq.apps.commtrack.requisitions import get_notification_message
 from corehq.apps.commtrack.tests.data.balances import (
     balance_ota_block,
@@ -98,7 +100,7 @@ class CommTrackOTATest(CommTrackTest):
         self.ct_settings.ota_restore_config = StockRestoreConfig(
             section_to_consumption_types={'stock': 'consumption'}
         )
-        set_default_consumption_for_domain(self.domain.name, 5)
+        set_default_monthly_consumption_for_domain(self.domain.name, 5 * DAYS_IN_MONTH)
 
         amounts = [(p._id, i*10) for i, p in enumerate(self.products)]
         report = _report_soh(amounts, self.sp._id, 'stock')
@@ -120,7 +122,7 @@ class CommTrackOTATest(CommTrackTest):
             balance_ota_block(
                 self.sp,
                 'consumption',
-                [(p._id, 5) for p in self.products],
+                [(p._id, 150) for p in self.products],
                 datestring=json_format_datetime(report.date),
             ),
              consumption_block,
@@ -135,7 +137,7 @@ class CommTrackOTATest(CommTrackTest):
         self.ct_settings.ota_restore_config = StockRestoreConfig(
             section_to_consumption_types={'stock': 'consumption'},
         )
-        set_default_consumption_for_domain(self.domain.name, 5)
+        set_default_monthly_consumption_for_domain(self.domain.name, 5)
 
         balance_blocks = _get_ota_balance_blocks(self.ct_settings, self.user)
         self.assertEqual(0, len(balance_blocks))
@@ -143,10 +145,8 @@ class CommTrackOTATest(CommTrackTest):
         # self.ct_settings.ota_restore_config.use_dynamic_product_list = True
         self.ct_settings.ota_restore_config.force_consumption_case_types = [const.SUPPLY_POINT_CASE_TYPE]
         balance_blocks = _get_ota_balance_blocks(self.ct_settings, self.user)
-        self.assertEqual(1, len(balance_blocks))
-        [balance_block] = balance_blocks
-        element = etree.fromstring(balance_block)
-        self.assertEqual(0, len([child for child in element]))
+        # with no data, there should be no consumption block
+        self.assertEqual(0, len(balance_blocks))
 
         self.ct_settings.ota_restore_config.use_dynamic_product_list = True
         balance_blocks = _get_ota_balance_blocks(self.ct_settings, self.user)
@@ -165,9 +165,8 @@ class CommTrackSubmissionTest(CommTrackTest):
         loc2 = make_loc('loc1')
         self.sp2 = make_supply_point(self.domain.name, loc2)
 
+    @override_settings(CASEXML_FORCE_DOMAIN_CHECK=False)
     def submit_xml_form(self, xml_method, **submit_extras):
-        from casexml.apps.case import settings
-        settings.CASEXML_FORCE_DOMAIN_CHECK = False
         instance_id = uuid.uuid4().hex
         instance = submission_wrap(
             instance_id,
@@ -447,7 +446,7 @@ class CommTrackSyncTest(CommTrackSubmissionTest):
         self.ct_settings.ota_restore_config = StockRestoreConfig(
             section_to_consumption_types={'stock': 'consumption'}
         )
-        set_default_consumption_for_domain(self.domain.name, 5)
+        set_default_monthly_consumption_for_domain(self.domain.name, 5)
         self.ota_settings = self.ct_settings.get_ota_restore_settings()
 
         # get initial restore token

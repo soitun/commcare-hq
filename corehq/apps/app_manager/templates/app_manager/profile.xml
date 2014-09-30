@@ -2,18 +2,18 @@
     <property key="BackupMode" value="file_mode"/>
     <property key="backup-url" value="file:///E:/CommCare.Backup"/>
     <property key="restore-url" value="file:///E:/CommCare.Backup"/>
-    <property key="ota-restore-url" value="{{ ota_restore_url }}"/>
-    <property key="ota-restore-url-testing" value="{{ ota_restore_url }}"/>
-    <property key="PostURL" value="{{ post_url }}" force="true"/>
-    <property key="PostTestURL" value="{{ post_test_url }}" force="true"/>
-    <property key="key_server" value="{{ key_server_url }}"/>
+    <property key="ota-restore-url" value="{{ app.ota_restore_url }}"/>
+    <property key="ota-restore-url-testing" value="{{ app.ota_restore_url }}"/>
+    <property key="PostURL" value="{{ app.post_url }}" force="true"/>
+    <property key="PostTestURL" value="{{ app.post_url }}" force="true"/>
+    <property key="key_server" value="{{ app.key_server_url }}"/>
     <property key="cur_locale" value="{{ app.build_langs.0 }}"/>
     <property key="cc_user_domain" value="{{ cc_user_domain }}"/>
     <property key="jr_openrosa_api" value="1.0"/>
 
     <!-- Properties configured on CommCare HQ 1.0 -->
     {% for key, value in app_profile.properties.items %}{% if value != None %}
-        <property key="{{ key }}" value="{{ value }}" />
+        <property key="{{ key }}" value="{{ value.value }}"{% if value.force %} force="true"{% endif %}/>
     {% endif %}{% endfor %}
 
     <!-- end -->
@@ -24,10 +24,10 @@
             <time>0</time>
         </reminders>
         <package active="false"/>
-        {% for feature, value in app_profile.features.items %}{% if value != None and feature != 'users'%}
-            <{{ feature }} active="{{ value }}" />
+        {% for feature, value in app_profile.features.items %}{% if value.value != None and feature != 'users'%}
+            <{{ feature }} active="{{ value.value }}" />
         {% endif %}{% endfor %}
-        <users active="{{ app_profile.features.users|default:'true' }}">
+        <users active="{{ app_profile.features.users.value|default:'true' }}">
             {% if app.show_user_registration %}
             <registration>{{ app.get_user_registration.wrapped_xform.data_node.tag_xmlns }}</registration>
             {% endif %}
@@ -35,15 +35,15 @@
     </features>
 
     <suite><resource id="suite" version="{{ app.version }}">
-        {% if not is_odk %}
-        <location authority="local">jr://resource/{{ suite_loc }}</location>
+        {% if app.enable_relative_suite_path or not is_odk %}
+            <location authority="local">{{ app.suite_loc }}</location>
         {% endif %}
-        <location authority="remote">{{ suite_url }}</location>
+        <location authority="remote">{{ app.suite_url }}</location>
     </resource></suite>
     {% if include_media_suite %}
     <suite><resource id="media-suite" version="{{ app.version }}">
-        {% if not is_odk %}
-            <location authority="local">jr://resource/{{ app.media_suite_loc }}</location>
+        {% if app.enable_relative_suite_path or not is_odk %}
+            <location authority="local">{{ app.media_suite_loc }}</location>
         {% endif %}
         <location authority="remote">{{ app.media_suite_url }}</location>
     </resource></suite>

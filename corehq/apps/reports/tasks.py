@@ -1,11 +1,10 @@
 from django.utils.translation import ugettext as _
 from datetime import datetime, timedelta
-import os
-from tempfile import NamedTemporaryFile
 import uuid
 
 from celery.schedules import crontab
 from celery.task import periodic_task
+from corehq.apps.reports.scheduled import get_scheduled_reports
 from couchexport.files import Temp
 from couchexport.groupexports import export_for_group
 from dimagi.utils.couch.database import get_db
@@ -95,43 +94,36 @@ def create_metadata_export(download_id, domain, format, filename, datespan=None,
 
     return cache_file_to_be_served(Temp(tmp_path), FakeCheckpoint(domain), download_id, format, filename)
 
-@periodic_task(run_every=crontab(hour="*", minute="0", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
+
+@periodic_task(run_every=crontab(hour="*", minute="*/30", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
 def daily_reports():
-    # this should get called every hour by celery
-    reps = ReportNotification.view("reportconfig/all_notifications",
-                                   startkey=["daily", datetime.utcnow().hour],
-                                   endkey=["daily", datetime.utcnow().hour, {}],
-                                   reduce=False,
-                                   include_docs=True).all()
-    for rep in reps:
+    for rep in get_scheduled_reports('daily'):
         send_report.delay(rep._id)
 
-@periodic_task(run_every=crontab(hour="*", minute="1", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
+
+@periodic_task(run_every=crontab(hour="*", minute="*/30", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
 def weekly_reports():
-    # this should get called every hour by celery
-    now = datetime.utcnow()
-    reps = ReportNotification.view("reportconfig/all_notifications",
-                                   key=["weekly", now.hour, now.weekday()],
-                                   reduce=False,
-                                   include_docs=True).all()
-    for rep in reps:
+    for rep in get_scheduled_reports('weekly'):
         send_report.delay(rep._id)
 
-@periodic_task(run_every=crontab(hour="*", minute="1", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
+
+@periodic_task(run_every=crontab(hour="*", minute="*/30", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
 def monthly_reports():
-    now = datetime.utcnow()
-    reps = ReportNotification.view("reportconfig/all_notifications",
-                                   key=["monthly", now.hour, now.day],
-                                   reduce=False,
-                                   include_docs=True).all()
-    for rep in reps:
+    for rep in get_scheduled_reports('monthly'):
         send_report.delay(rep._id)
+
 
 @periodic_task(run_every=crontab(hour=[22], minute="0", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
 def saved_exports():
     for group_config in HQGroupExportConfiguration.view("groupexport/by_domain", reduce=False,
                                                         include_docs=True).all():
-        export_for_group(group_config, "couch")
+        export_for_group_async.delay(group_config, 'couch')
+
+
+@task(queue='saved_exports_queue')
+def export_for_group_async(group_config, output_dir):
+    export_for_group(group_config, output_dir)
+
 
 @periodic_task(run_every=crontab(hour="12, 22", minute="0", day_of_week="*"), queue=getattr(settings, 'CELERY_PERIODIC_QUEUE','celery'))
 def update_calculated_properties():
@@ -206,7 +198,7 @@ def export_all_rows_task(ReportClass, report_state):
 
 def _send_email(to, report, hash_id):
     domain = Site.objects.get_current().domain
-    link = "http://%s%s" % (domain, reverse("export_report", args=[report.domain, str(hash_id)]))
+    link = "http://%s%s" % (domain, reverse("export_report", args=[report.domain, str(hash_id), report.export_format]))
 
     title = "%s: Requested export excel data"
     body = "The export you requested for the '%s' report is ready.<br>" \
@@ -219,16 +211,8 @@ def _send_email(to, report, hash_id):
 def _store_excel_in_redis(file):
     hash_id = uuid.uuid4().hex
 
-    tmp = NamedTemporaryFile(delete=False)
-    tmp.file.write(file.getvalue())
-
     r = get_redis_client()
-    r.set(hash_id, tmp.name)
+    r.set(hash_id, file.getvalue())
     r.expire(hash_id, EXPIRE_TIME)
-    _remove_temp_file.apply_async(args=[tmp.name], countdown=EXPIRE_TIME)
 
     return hash_id
-
-@task
-def _remove_temp_file(temp_file):
-    os.unlink(temp_file)

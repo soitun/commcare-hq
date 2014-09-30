@@ -92,8 +92,9 @@ class CaseAssignmentTest(TestCase):
 
     def test_assign_exclusion(self):
         self._make_tree()
+        exclude_fn = lambda case: case._id in (self.grandfather._id, self.primary._id, self.grandson._id)
         assign_case(self.primary, self.primary_user._id, include_subcases=True, include_parent_cases=True,
-                    exclude=(self.grandfather._id, self.primary._id, self.grandson._id))
+                    exclude_function=exclude_fn)
         self._check_state(new_owner_id=self.primary_user._id, expected_changed=[
             self.grandmother, self.parent, self.son, self.daughter,self.granddaughter, self.grandson2
         ])
@@ -103,11 +104,14 @@ class CaseAssignmentTest(TestCase):
         # shouldn't fail
         case = self._new_case()
         case_with_bad_ref = self._new_case(index={'parent': ('person', case._id)})
-        case.delete()
+        case.doc_type += '-Deleted'
+        case.save()
         # this call previously failed
-        res = assign_case(case_with_bad_ref, self.primary_user._id, include_subcases=True, include_parent_cases=True)
-        self.assertEqual(1, len(res))
-        self.assertEqual(case_with_bad_ref._id, res[0])
+        res = assign_case(case_with_bad_ref, self.primary_user._id,
+                          include_subcases=True, include_parent_cases=True)
+        self.assertEqual(2, len(res))
+        self.assertIn(case_with_bad_ref._id, res)
+        self.assertIn(case._id, res)
 
     def _make_tree(self):
         # create a tree that looks like this:

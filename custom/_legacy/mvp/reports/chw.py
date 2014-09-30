@@ -2,6 +2,7 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 import logging
 import numpy
+import pytz
 from corehq.apps.indicators.models import DynamicIndicatorDefinition, CombinedCouchViewIndicatorDefinition
 from corehq.apps.reports.datatables import DataTablesHeader, DataTablesColumn, DataTablesColumnGroup
 from corehq.apps.reports.generic import GenericTabularReport
@@ -111,7 +112,7 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
                 self.statistics_rows[3].append(_create_stat_cell('total', indicator.slug))
 
         for u, user in enumerate(self.users):
-            row_data = [user.get('username_in_report')]
+            row_data = [user.username_in_report]
             for section in self.indicators:
                 for indicator in section:
                     table_cell = self.table_cell(None, d_text(indicator.slug))
@@ -122,7 +123,7 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
 
             rows.append({
                 'data': row_data,
-                'css_id': user.get('user_id'),
+                'css_id': user.user_id,
             })
 
         return rows
@@ -133,7 +134,7 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
     def full_rows(self):
         user_data = {}
         for user in self.users:
-            user_data[user.get('user_id')] = [user.get('username_in_report')]
+            user_data[user.user_id] = [user.username_in_report]
 
         for section in self.indicators:
             for indicator in section:
@@ -164,8 +165,6 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
             dict(
                 title="Newborn",
                 indicators=[
-                    dict(slug="num_births_occured", expected="--"),
-                    dict(slug="num_births_recorded", expected="--"),
                     dict(slug="facility_births_proportion", expected="100%"),
                     dict(slug="newborn_7day_visit_proportion", expected="100%"),
                     dict(slug="neonate_routine_visit_past7days", expected="100%"),
@@ -175,7 +174,6 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
                 title="Under-5s",
                 indicators=[
                     dict(slug="num_under5", expected="--"),
-                    dict(slug="under5_danger_signs", expected="--"),
                     dict(slug="under5_fever", expected="--"),
                     dict(slug="under5_fever_rdt_proportion", expected="100%"),
                     dict(slug="under5_fever_rdt_positive_proportion", expected="100%"),
@@ -192,7 +190,6 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
                 title="Pregnant",
                 indicators=[
                     dict(slug="pregnancy_cases", expected="--"),
-                    dict(slug="pregnancy_visit_danger_sign_referral_proportion", expected="100%"),
                     dict(slug="anc4_proportion", expected="100%"),
                     dict(slug="pregnant_routine_checkup_proportion_6weeks", expected="100%"),
                     dict(slug="pregnant_routine_visit_past30days", expected="100%"),
@@ -201,10 +198,9 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
             dict(
                 title="Follow-up",
                 indicators=[
-                    dict(slug="num_urgent_referrals", expected="--"), # denominator for MVIS indicator
+                    dict(slug="under5_danger_signs", expected="--"),
+                    dict(slug="pregnancy_visit_danger_sign_referral_proportion", expected="100%"),
                     dict(slug="urgent_referrals_proportion", expected="100%"), # MVIS Indicator
-                    dict(slug="late_followups_proportion", expected="--"),
-                    dict(slug="no_followups_proportion", expected="--"),
                     dict(slug="median_days_referral_followup", expected="<=2"),
                 ]
             ),
@@ -216,12 +212,28 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
                     ]
             ),
             dict(
+                title="Vital Events",
+                indicators=[
+                    dict(slug="num_births_occured", expected="--"),
+                    dict(slug="num_births_recorded", expected="--"),
+                    dict(slug="maternal_deaths", expected="--"),
+                    dict(slug="neonatal_deaths", expected="--"),
+                    dict(slug="infant_deaths", expected="--"),
+                    dict(slug="under5_deaths", expected="--"),
+                    dict(slug="over5_deaths", expected="--"),
+                ]
+            ),
+            dict(
                 title="Stats",
                 indicators=[
                     dict(slug="days_since_last_transmission", expected="--"),
                 ]
             )
         ]
+
+    @property
+    def timezone(self):
+        return pytz.utc
 
     def get_response_for_indicator(self, indicator):
         raw_values = {}
@@ -242,9 +254,9 @@ class CHWManagerReport(GenericTabularReport, MVPIndicatorReport, DatespanMixin):
 
         for u, user in enumerate(self.users):
             self.datespan.inclusive = False
-            value = indicator.get_value([user.get('user_id')], self.datespan)
-            raw_values[user.get('user_id')] = value
-            user_indices[user.get('user_id')] = u
+            value = indicator.get_value([user.user_id], self.datespan)
+            raw_values[user.user_id] = value
+            user_indices[user.user_id] = u
         all_values = raw_values.values()
         if all_values:
             if isinstance(all_values[0], dict):

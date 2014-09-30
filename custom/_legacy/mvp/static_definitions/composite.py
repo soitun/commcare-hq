@@ -1,38 +1,43 @@
 COMPOSITE_INDICATORS = dict(
     # Child Health
     under5_fever_rdt_proportion=dict(
-        description="Proportion of Under-5s with uncomplicated fever who received RDT test",
+        description="Proportion of children aged 6-59 months with "
+                    "uncomplicated fever who received RDT test",
         title="% Under-5s w/ uncomplicated fever who received RDT test",
         numerator_slug="under5_fever_rdt",
         denominator_slug="under5_fever"
     ),
     under5_fever_rdt_positive_proportion=dict(
-        description="Proportion of Under-5s with uncomplicated fever who received RDT test and were RDT positive",
+        description="Proportion of children aged 6-59 months with uncomplicated"
+                    " fever who received RDT test and were RDT positive",
         title="% Under-5s with uncomplicated fever who received RDT test and were RDT positive",
         numerator_slug="under5_fever_rdt_positive",
         denominator_slug="under5_fever_rdt"
     ),
     under5_fever_rdt_positive_medicated_proportion=dict(
-        description="Proportion of Under-5s with positive RDT result who received antimalarial/ADT medication",
+        description="Proportion of children aged 6-59 months with positive RDT"
+                    " result who received antimalarial/ADT medication",
         title="% Under-5s w/ Positive RDT result who received antimalarial/ADT medication",
         numerator_slug="under5_fever_rdt_positive_medicated",
         denominator_slug="under5_fever_rdt_positive"
     ),
     under5_fever_rdt_not_received_proportion=dict(
-        description="Proportion of Under-5s with uncomplicated fever who did NOT receive RDT "
-                    "test due to 'RDT not available' with CHW",
+        description="Proportion of children aged 6-59 months with uncomplicated"
+                    " fever who did NOT receive RDT test due to 'RDT not available' with CHW",
         title="% Under-5s w/ RDT Not Available",
         numerator_slug="under5_fever_rdt_not_received",
         denominator_slug="under5_fever"
     ),
     under5_diarrhea_ors_proportion=dict(
-        description="Proportion of Under-5s with uncomplicated diarrhea who received ORS",
+        description="Proportion of children aged 2-59 months with "
+                    "uncomplicated diarrhea who received ORS",
         title="% Under-5s with uncomplicated diarrhea who received ORS",
         numerator_slug="under5_diarrhea_ors",
         denominator_slug="under5_diarrhea"
     ),
     under5_diarrhea_zinc_proportion=dict(
-        description="Proportion of Under-5s with uncomplicated diarrhea who received ZINC",
+        description="Proportion of children aged 2-59 months with "
+                    "uncomplicated diarrhea who received ZINC",
         title="% Under-5s with uncomplicated diarrhea who received ZINC",
         numerator_slug="under5_diarrhea_zinc",
         denominator_slug="under5_diarrhea"
@@ -64,13 +69,28 @@ COMPOSITE_INDICATORS = dict(
         denominator_slug="under1_visits",
     ),
     under5_fever_rdt_negative_medicated_proportion=dict(
-        description="Proportion of Under-5s with negative RDT result who received antimalarial/ADT medication",
+        description="Proportion of children aged 6-59 months with negative RDT"
+                    " result who received antimalarial/ADT medication",
         title="% Under-5s w/ Negative RDT result who received antimalarial/ADT medication",
         numerator_slug="under5_fever_rdt_negative_medicated",
         denominator_slug="under5_fever_rdt_negative"
     ),
 
     # Child Nutrition
+    moderate_muac_wasting_proportion=dict(
+        description="Proportion of children aged 6-59 months with moderate wasting (MUAC 115<125) "\
+                    "at last MUAC reading this time period",
+        title="% 6-59 month Children with moderate MUAC (115<125)",
+        numerator_slug="child_moderate_muac_wasting",
+        denominator_slug="child_muac_reading"
+    ),
+    severe_muac_wasting_proportion=dict(
+        description="Proportion of children aged 6-59 months with severe wasting (MUAC <115) "\
+                    "at last MUAC reading this time period",
+        title="% 6-59 month Children with severe MUAC < 115",
+        numerator_slug="child_severe_muac_wasting",
+        denominator_slug="child_muac_reading"
+    ),
     muac_wasting_proportion=dict(
         description="Proportion of children aged 6-59 months with moderate or severe wasting (MUAC < 125) "\
                     "at last MUAC reading this time period",
@@ -125,15 +145,16 @@ COMPOSITE_INDICATORS = dict(
         denominator_slug="pregnancy_cases_30days"
     ),
     neonate_routine_visit_past7days=dict(
-        description="Proportion of NEONATES (NEWBORN LESS THAN 29 DAYS OLD) receiving on-time" \
-                    " routine visit within last 7 DAYS",
-        title="% of NEONATES (NEWBORN LESS THAN 29 DAYS OLD) receiving on-time routine visit " \
-              "within last 7 DAYS",
+        description="Proportion of Neonates (less than 29 days old) receiving "
+                    "on-time routine visit in the past 7 days "
+                    "(from end of reporting period)",
+        title="% of Neonates (less than 29 days old) receiving on-time routine"
+              " visit in the past 7 days (from end of reporting period)",
         numerator_slug="neonate_visits_7days",
         denominator_slug="neonate_cases_7days"
     ),
     newborn_7day_visit_proportion=dict(
-        description=" Proportion of children (LESS THAN 8 DAYS OLD) receiving first CHW check-up" \ 
+        description=" Proportion of children (LESS THAN 8 DAYS OLD) receiving first CHW check-up" \
 		    "within 7 days of birth during the time period",
         title="% Newborns checked within 7 days of birth",
         numerator_slug="newborn_visits",
@@ -148,8 +169,9 @@ COMPOSITE_INDICATORS = dict(
 
     # Followups
     urgent_referrals_proportion=dict(
-        description="Proportion of urgent referrals (codes A, E, B) or treatment receiving CHW " \
-                    "follow-up within 2 days of referral / treatment during the time period",
+        description="Proportion of urgent referrals (emergency, take to clinic,"\
+                    " basic) or treatment receiving CHW follow-up within "\
+                    "2 days of referral / treatment during the time period",
         title="% Referred / Treated receiving on-time follow-up (within 2 days)",
         numerator_slug="urgent_referral_followups",
         denominator_slug="num_urgent_referrals"
@@ -208,5 +230,23 @@ COMPOSITE_INDICATORS = dict(
         title="% of Over-5s with positive RDT result who received antimalarial/ADT medication",
         numerator_slug="over5_positive_rdt_medicated",
         denominator_slug="over5_positive_rdt",
+    ),
+
+    #Functioning Bednet
+    functioning_bednet_proportion=dict(
+        description="Proportion of households ASSESSED with at least one functioning bednet"\
+                    "per sleeping site during the time period",
+        title="% of households ASSESSED with at least one functioning bednet per sleeping site",
+        numerator_slug="household_num_func_bednets",
+        denominator_slug="household_num_bednets",
+    ),
+
+    #Handwashing
+    handwashing_near_latrine_proportion=dict(
+        description="Proportion of households ASSESSED with handwashing station within 10m"\
+                    " of the latrine during the time period",
+        title="% of households ASSESSED with handwashing station within 10m of the latrine",
+        numerator_slug="num_handwashing_latrine",
+        denominator_slug="num_handwashing",
     ),
 )

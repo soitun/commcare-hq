@@ -16,7 +16,7 @@ class LdKeyValueDictCalculator(fluff.Calculator):
 
     @fluff.date_emitter
     def total(self, form):
-        if self.filter_function is None or self.filter_function(form, self.namespaces):
+        if form.xmlns in self.namespaces and (self.filter_function is None or self.filter_function(form)):
             passed_all_filters = True
             for key in self.key_value_dict:
                 filter_element = self.key_value_dict.get(key, "")
@@ -34,23 +34,25 @@ class DeliveriesComplicationsCalculator(fluff.Calculator):
 
     @fluff.date_emitter
     def total(self, form):
-        if form_passes_filter_date_delivery(form, BOOKED_AND_UNBOOKED_DELIVERY_FORMS) and\
+        if form.xmlns in BOOKED_AND_UNBOOKED_DELIVERY_FORMS and form_passes_filter_date_delivery(form) and\
                         len(form.form.get("birth_complication", "")) > 0:
             yield [get_date_delivery(form), 1]
 
 
 class ChildSexWeightCalculator(fluff.Calculator):
 
-    def __init__(self, key_value_dict, weight, comparison, namespaces, *args, **kwargs):
+    def __init__(self, key_value_dict, weight, comparison, namespaces, filter_function=None, *args, **kwargs):
         self.key_value_dict = key_value_dict
         self.weight = weight
         self.comparison = comparison
         self.namespaces = namespaces
+        self.filter_function = filter_function
+        self.get_date_function = get_date_delivery if self.filter_function is form_passes_filter_date_delivery else get_received_on
         super(ChildSexWeightCalculator, self).__init__(*args, **kwargs)
 
     @fluff.date_emitter
     def total(self, form):
-        if form_passes_filter_date_delivery(form, self.namespaces):
+        if form.xmlns in self.namespaces and self.filter_function(form):
             passed_all_filters = True
             for key in self.key_value_dict:
                 value = self.key_value_dict.get(key, "")
@@ -61,4 +63,4 @@ class ChildSexWeightCalculator(fluff.Calculator):
                     or (self.comparison == '>=' and string_to_numeric(form.form.get("baby_weight", 0.0), float) < self.weight):
                 passed_all_filters = False
             if passed_all_filters:
-                yield [get_date_delivery(form), 1]
+                yield [self.get_date_function(form), 1]

@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-from corehq.apps.sms.util import clean_phone_number, create_billable_for_sms
+from corehq.apps.sms.util import clean_phone_number
 from corehq.apps.sms.api import incoming
 from corehq.apps.sms.mixin import SMSBackend
 from urllib2 import urlopen
@@ -8,6 +8,7 @@ from urllib import urlencode
 import pytz
 from couchdbkit.ext.django.schema import *
 from corehq.apps.unicel.forms import UnicelBackendForm
+from django.conf import settings
 
 OUTBOUND_URLBASE = "http://www.unicel.in/SendSMS/sendmsg.php"
 
@@ -76,11 +77,10 @@ class UnicelBackend(SMSBackend):
             params.append((OutboundParams.MESSAGE, encoded))
 
         try:
-            data = urlopen('%s?%s' % (OUTBOUND_URLBASE, urlencode(params))).read()
+            data = urlopen('%s?%s' % (OUTBOUND_URLBASE, urlencode(params)),
+                timeout=settings.SMS_GATEWAY_TIMEOUT).read()
         except Exception:
             data = None
-
-        create_billable_for_sms(message, UnicelBackend.get_api_id(), delay=delay, response=data)
 
         return data
 

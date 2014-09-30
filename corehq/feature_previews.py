@@ -48,8 +48,8 @@ class FeaturePreview(StaticToggle):
 SUBMIT_HISTORY_FILTERS = FeaturePreview(
     slug='submit_history_filters',
     label=_("Advanced Submit History Filters"),
-    description=_("Filter the forms in the Submit History report by data in"
-        "the form submissions. Add extra columns to the report that represent"
+    description=_("Filter the forms in the Submit History report by data in "
+        "the form submissions. Add extra columns to the report that represent "
         "data in the forms."),
     # privilege=privileges.
     # help_link='https://confluence.dimagi.com/display/SPEC/Feature+Preiview+aka+Labs+Specification'
@@ -58,8 +58,20 @@ SUBMIT_HISTORY_FILTERS = FeaturePreview(
 CALC_XPATHS = FeaturePreview(
     slug='calc_xpaths',
     label=_('Custom Calculations in Case List'),
-    description=_("Specify a custom xpath expression to calculate a value"
+    description=_(
+        "Specify a custom xpath expression to calculate a value "
         "in the case list or case detail screen."),
+)
+
+ENUM_IMAGE = FeaturePreview(
+    slug='enum_image',
+    label=_('Icons in Case List'),
+    description=_(
+        "Display a case property as an icon in the case list. "
+        "For example, to show that a case is late, "
+        'display a red square instead of "late: yes".'
+    ),
+    help_link='https://help.commcarehq.org/display/commcarepublic/Adding+Icons+in+Case+List+and+Case+Detail+screen'
 )
 
 
@@ -72,10 +84,36 @@ def commtrackify(domain_name, checked):
 COMMTRACK = FeaturePreview(
     slug='commtrack',
     label=_("CommTrack"),
-    description=_('<a href="http://www.commtrack.org/home/">CommTrack</a> '
+    description=_(
+        '<a href="http://www.commtrack.org/home/">CommTrack</a> '
         "is a logistics and supply chain management module. It is designed "
         "to improve the management, transport, and resupply of a variety of "
-        "goods and materials, from medication to food to bednets."),
-    help_link='https://confluence.dimagi.com/display/commtrack/CommTrack+Home',
+        "goods and materials, from medication to food to bednets. <br/>"
+        "Note: You must also enable CommTrack on any CommTrack "
+        "application's settings page."),
+    help_link='https://help.commcarehq.org/display/commtrack/CommTrack+Home',
     save_fn=commtrackify,
 )
+
+
+def enable_callcenter(domain_name, checked):
+    from corehq.apps.domain.models import Domain
+    domain = Domain.get_by_name(domain_name)
+    domain.call_center_config.enabled = checked
+    domain.save()
+
+
+CALLCENTER = FeaturePreview(
+    slug='callcenter',
+    label=_("Call Center"),
+    description=_(
+        'The call center application setting allows an application to reference a '
+        'mobile user as a case that can be monitored using CommCare.  '
+        'This allows supervisors to view their workforce within CommCare.  '
+        'From here they can do things like monitor workers with performance issues, '
+        'update their case with possible reasons for poor performance, '
+        'and offer guidance towards solutions.'),
+    help_link='https://help.commcarehq.org/display/commcarepublic/How+to+set+up+a+Supervisor-Call+Center+Application',
+    save_fn=enable_callcenter,
+)
+

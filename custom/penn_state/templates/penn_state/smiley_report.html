@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 {% load hq_shared_tags %}
+{% load compress %}
 
 <html>
 <head>
-    <link href="{% static 'hqstyle/css/core/hqstyle-core.css' %}" rel="stylesheet"/>
+    {% compress css %}
+    <link type="text/less" rel="stylesheet" media="all" href="{% static 'style/less/hqstyle-core.less' %}"/>
     <link href="{% static 'penn_state/css/smiley_reports.css' %}" rel="stylesheet"/>
     <link href="{% static 'hqwebapp/js/lib/nvd3/nv.d3.css' %}" rel="stylesheet"/>
     <meta name='viewport' content='width=device-width, initial-scale=.1, maximum-scale=1'/>
+    {% endcompress %}
     <title>Legacy Together</title>
 </head>
 
@@ -87,7 +90,7 @@
     </script>
     {% comment %}
     <script type="text/javascript" src="{% static 'hqwebapp/js/lib/jquery-ui/jquery-ui-1.8.16.min.js' %}"></script>
-    <script type="text/javascript" src="{% static 'hqwebapp/js/lib/knockout-2.1.0.debug.js' %}"></script>
+    <script type="text/javascript" src="{% static 'hqwebapp/js/lib/knockout-2.3.0.js' %}"></script>
     <script type="text/javascript" src="{% static 'hqwebapp/js/lib/underscore-1.4.4.js' %}"></script>
     <script type="text/javascript" src="{% static 'hqwebapp/js/knockout-bindings.js' %}"></script>
     {% endcomment %}

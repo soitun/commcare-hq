@@ -2,21 +2,14 @@
 import lxml
 from corehq.apps.app_manager.const import APP_V2, CAREPLAN_GOAL, CAREPLAN_TASK
 from corehq.apps.app_manager.models import Application, OpenCaseAction, UpdateCaseAction, PreloadAction, FormAction, Module, AdvancedModule, AdvancedForm, AdvancedOpenCaseAction, LoadUpdateAction, \
-    AutoSelectCase
-from django.test import TestCase
+    AutoSelectCase, FormActionCondition
+from django.test import SimpleTestCase as TestCase
 from corehq.apps.app_manager.tests.util import TestFileMixin
 from corehq.apps.app_manager.util import new_careplan_module
+from corehq.apps.app_manager.xform import XForm
 
 
-class FormPrepBase(TestCase, TestFileMixin):
-    def assertXmlEqual(self, expected, actual):
-        parser = lxml.etree.XMLParser(remove_blank_text=True)
-        parsed_expected = lxml.etree.tostring(lxml.etree.XML(expected, parser), pretty_print=True)
-        parsed_actual = lxml.etree.tostring(lxml.etree.XML(actual, parser), pretty_print=True)
-        super(FormPrepBase, self).assertXmlEqual(parsed_actual, parsed_expected)
-
-
-class FormPreparationV2Test(FormPrepBase):
+class FormPreparationV2Test(TestCase, TestFileMixin):
     file_path = 'data', 'form_preparation_v2'
     def setUp(self):
         self.app = Application.new_app('domain', 'New App', APP_V2)
@@ -69,6 +62,13 @@ class FormPreparationV2Test(FormPrepBase):
         self.form.actions.case_preload.condition.type = 'always'
         self.assertXmlEqual(self.get_xml('update_preload_case'), self.form.render_xform())
 
+    def test_update_attachment(self):
+        self.form.requires = 'case'
+        self.form.source = self.get_xml('attachment')
+        self.form.actions.update_case = UpdateCaseAction(update={'photo': '/data/thepicture'})
+        self.form.actions.update_case.condition.type = 'always'
+        self.assertXmlEqual(self.get_xml('update_attachment_case'), self.form.render_xform())
+
     def test_close_case(self):
         self.form.requires = 'case'
         self.form.actions.close_case = FormAction()
@@ -76,7 +76,7 @@ class FormPreparationV2Test(FormPrepBase):
         self.assertXmlEqual(self.get_xml('close_case'), self.form.render_xform())
 
 
-class SubcaseRepeatTest(FormPrepBase):
+class SubcaseRepeatTest(TestCase, TestFileMixin):
     file_path = ('data', 'form_preparation_v2')
 
     def test_subcase_repeat(self):
@@ -97,7 +97,7 @@ class SubcaseRepeatTest(FormPrepBase):
                               self.get_xml('multiple_subcase_repeat'))
 
 
-class SubcaseParentRefTeset(FormPrepBase):
+class SubcaseParentRefTeset(TestCase, TestFileMixin):
     file_path = ('data', 'form_preparation_v2')
 
     def test_parent_ref(self):
@@ -106,7 +106,7 @@ class SubcaseParentRefTeset(FormPrepBase):
                               self.get_xml('subcase-parent-ref'))
 
 
-class CaseSharingFormPrepTest(FormPrepBase):
+class CaseSharingFormPrepTest(TestCase, TestFileMixin):
     file_path = ('data', 'form_preparation_v2')
 
     def test_subcase_repeat(self):
@@ -114,7 +114,33 @@ class CaseSharingFormPrepTest(FormPrepBase):
         self.assertXmlEqual(self.app.get_module(0).get_form(0).render_xform(),
                               self.get_xml('complex-case-sharing'))
 
-class FormPreparationCareplanTest(FormPrepBase):
+
+class GPSFormPrepTest(TestCase, TestFileMixin):
+    file_path = ('data', 'form_preparation_v2')
+
+    def setUp(self):
+        self.app = Application.wrap(self.get_json('gps'))
+
+    def test_form_with_gps_question(self):
+        self.assertXmlEqual(self.app.get_module(0).get_form(0).render_xform(),
+                            self.get_xml('gps_with_question'))
+
+    def test_form_without_gps_question(self):
+        self.assertXmlEqual(self.app.get_module(0).get_form(1).render_xform(),
+                            self.get_xml('gps_no_question'))
+
+    def test_form_with_gps_question_auto(self):
+        self.app.auto_gps_capture = True
+        self.assertXmlEqual(self.app.get_module(0).get_form(0).render_xform(),
+                            self.get_xml('gps_with_question_auto'))
+
+    def test_form_without_gps_question_auto(self):
+        self.app.auto_gps_capture = True
+        self.assertXmlEqual(self.app.get_module(0).get_form(1).render_xform(),
+                            self.get_xml('gps_no_question_auto'))
+
+
+class FormPreparationCareplanTest(TestCase, TestFileMixin):
     file_path = 'data', 'form_preparation_careplan'
     def setUp(self):
         self.app = Application.new_app('domain', 'New App', APP_V2)
@@ -146,7 +172,7 @@ class FormPreparationCareplanTest(FormPrepBase):
 
 
 
-class FormPreparationV2TestAdvanced(FormPrepBase):
+class FormPreparationV2TestAdvanced(TestCase, TestFileMixin):
     file_path = 'data', 'form_preparation_v2_advanced'
     def setUp(self):
         self.app = Application.new_app('domain', 'New App', APP_V2)
@@ -238,8 +264,17 @@ class FormPreparationV2TestAdvanced(FormPrepBase):
         ))
         self.assertXmlEqual(self.get_xml('update_parent_case'), self.form.render_xform())
 
+    def test_update_attachment(self):
+        self.form.source = self.get_xml('attachment')
+        self.form.actions.load_update_cases.append(LoadUpdateAction(
+            case_type=self.module.case_type,
+            case_tag='load_1',
+            case_properties={'photo': '/data/thepicture'}
+        ))
+        self.assertXmlEqual(self.get_xml('update_attachment_case'), self.form.render_xform())
 
-class SubcaseRepeatTestAdvanced(FormPrepBase):
+
+class SubcaseRepeatTestAdvanced(TestCase, TestFileMixin):
     file_path = ('data', 'form_preparation_v2_advanced')
 
     def setUp(self):
@@ -355,3 +390,29 @@ class SubcaseRepeatTestAdvanced(FormPrepBase):
         self.form.actions.open_cases[1].open_condition.question = '/data/child/which_child'
         self.form.actions.open_cases[1].open_condition.answer = '2'
         self.assertXmlEqual(self.get_xml('subcase-repeat-multiple'), self.form.render_xform())
+
+
+class TestXForm(TestCase):
+    def setUp(self):
+        self.xform = XForm('')
+
+    def test_action_relevance(self):
+        def condition_case(expected, type=None, question=None, answer=None, operator=None):
+            condition = FormActionCondition(
+                type=type,
+                question=question,
+                answer=answer,
+                operator=operator
+            )
+            return condition, expected
+
+        cases = [
+            (condition_case('true()', 'always')),
+            (condition_case('false()', 'never')),
+            (condition_case("/data/question1 = 'yes'", 'if', '/data/question1', 'yes')),
+            (condition_case("selected(/data/question1, 'yes')", 'if', '/data/question1', 'yes', 'selected')),
+        ]
+
+        for case in cases:
+            actual = self.xform.action_relevance(case[0])
+            self.assertEqual(actual, case[1])

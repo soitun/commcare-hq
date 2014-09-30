@@ -1,11 +1,14 @@
 from couchdbkit import ResourceNotFound
 from couchdbkit.ext.django.schema import *
 import itertools
+from corehq.apps.cachehq.mixins import CachedCouchDocumentMixin
 from dimagi.utils.couch.database import get_db, iter_docs
 from django import forms
 from django.core.urlresolvers import reverse
+from datetime import datetime
 
-class Location(Document):
+
+class Location(CachedCouchDocumentMixin, Document):
     domain = StringProperty()
     name = StringProperty()
     location_type = StringProperty()
@@ -13,6 +16,7 @@ class Location(Document):
     # unique id from some external data source
     external_id = StringProperty()
     metadata = DictProperty()
+    last_modified = DateTimeProperty()
 
     latitude = FloatProperty()
     longitude = FloatProperty()
@@ -42,6 +46,19 @@ class Location(Document):
     def __repr__(self):
         return "%s (%s)" % (self.name, self.location_type)
 
+    def save(self, *args, **kwargs):
+        self.last_modified = datetime.now()
+
+        # lazy migration for site_code
+        if not self.site_code:
+            from corehq.apps.locations.util import generate_site_code
+            self.site_code = generate_site_code(
+                self.name,
+                Location.site_codes_for_domain(self.domain)
+            )
+
+        return super(Location, self).save(*args, **kwargs)
+
     @classmethod
     def filter_by_type(cls, domain, loc_type, root_loc=None):
         loc_id = root_loc._id if root_loc else None
@@ -53,13 +70,43 @@ class Location(Document):
         return (cls.wrap(l) for l in iter_docs(cls.get_db(), list(relevant_ids)))
 
     @classmethod
+    def filter_by_type_count(cls, domain, loc_type, root_loc=None):
+        loc_id = root_loc._id if root_loc else None
+        return cls.get_db().view('locations/by_type',
+            reduce=True,
+            startkey=[domain, loc_type, loc_id],
+            endkey=[domain, loc_type, loc_id, {}],
+        ).one()['value']
+
+
+    @classmethod
     def by_domain(cls, domain):
-        relevant_ids = set([r['id'] for r in cls.get_db().view('locations/by_type',
+        relevant_ids = set([r['id'] for r in cls.get_db().view(
+            'locations/by_type',
             reduce=False,
             startkey=[domain],
             endkey=[domain, {}],
         ).all()])
         return (cls.wrap(l) for l in iter_docs(cls.get_db(), list(relevant_ids)))
+
+    @classmethod
+    def site_codes_for_domain(cls, domain):
+        return set([r['key'][1] for r in cls.get_db().view(
+            'locations/prop_index_site_code',
+            reduce=False,
+            startkey=[domain],
+            endkey=[domain, {}],
+        ).all()])
+
+    @classmethod
+    def by_site_code(cls, domain, site_code):
+        result = cls.get_db().view(
+            'locations/prop_index_site_code',
+            reduce=False,
+            startkey=[domain, site_code],
+            endkey=[domain, site_code, {}],
+        ).first()
+        return Location.get(result['id']) if result else None
 
     @classmethod
     def root_locations(cls, domain):
@@ -118,7 +165,7 @@ class Location(Document):
     def children(self):
         """return list of immediate children of this location"""
         startkey, endkey = self._key_bounds
-        depth = len(self.path) + 2 # 1 for domain, 1 for next location level
+        depth = len(self.path) + 2  # 1 for domain, 1 for next location level
         q = self.view('locations/hierarchy', startkey=startkey, endkey=endkey, group_level=depth)
         keys = [e['key'] for e in q if len(e['key']) == depth]
         return self.view('locations/hierarchy', keys=keys, reduce=False, include_docs=True).all()
@@ -139,7 +186,6 @@ class Location(Document):
     def linked_supply_point(self):
         from corehq.apps.commtrack.models import SupplyPointCase
         return SupplyPointCase.get_by_location(self)
-
 
 def root_locations(domain):
     results = Location.get_db().view('locations/hierarchy',
