@@ -40,3 +40,15 @@ class UserEntry(models.Model):
 
 class _(Document):
     pass
+
+
+def get_version_errors(domain, application_version):
+    version_string = "App v{version}.".format(version=application_version)
+    entries = (DeviceReportEntry.objects
+               .filter(type="exception",
+                       domain=domain,
+                       app_version__contains=version_string)
+               .distinct('msg')
+               .values_list('msg', flat=True))
+
+    return entries
