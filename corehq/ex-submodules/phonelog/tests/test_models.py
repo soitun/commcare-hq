@@ -34,12 +34,24 @@ class TestVersionErrors(TestCase):
 
     def setUp(self):
         self.domain = 'domain'
-        _create_report(self.message_1, "3", self.domain, "exception")
+
+    def test_returns_errors_for_version(self):
         _create_report(self.message_1, "2", self.domain, "exception")
         _create_report(self.message_2, "2", self.domain, "exception")
-        _create_report(self.message_1, "2", self.domain, "exception")
-        _create_report(self.message_1, "2", self.domain, "somethingelse")
 
-    def test_returns_error_for_version(self):
         errors = get_version_errors(self.domain, "2")
         self.assertItemsEqual(errors, [self.message_1, self.message_2])
+
+    def test_other_types_not_returned(self):
+        _create_report(self.message_1, "2", self.domain, "exception")
+        _create_report(self.message_2, "2", self.domain, "blah")
+
+        errors = get_version_errors(self.domain, "2")
+        self.assertItemsEqual(errors, [self.message_1])
+
+    def test_errors_for_differt_versions_not_returned(self):
+        _create_report(self.message_1, "2", self.domain, "exception")
+        _create_report(self.message_2, "3", self.domain, "exception")
+
+        errors = get_version_errors(self.domain, "2")
+        self.assertItemsEqual(errors, [self.message_1])
