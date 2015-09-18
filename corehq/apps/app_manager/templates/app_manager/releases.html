@@ -133,7 +133,7 @@
             attr: {disabled: !buildButtonEnabled() ? 'disabled' : undefined},
             css: {disabled: !buildButtonEnabled()}
         ">{% trans 'Make New Version' %}</button>
-
+        <button class="btn btn-primary" data-bind="click: reloadApps">{% trans 'Reload Apps' %}</button>
         <div id="build-errors-wrapper"></div>
         <table class="table">
             <tr>
