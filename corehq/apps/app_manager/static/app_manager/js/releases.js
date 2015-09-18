@@ -1,6 +1,6 @@
-function SavedApp(o, r) {
-    var $root = r;
-    var self = ko.mapping.fromJS(o);
+function SavedApp(app_json, releases_manager) {
+    var $root = releases_manager;
+    var self = ko.mapping.fromJS(app_json);
     $.each(['comment_user_name', '_deleteState'], function (i, attr) {
         self[attr] = self[attr] || ko.observable();
     });
@@ -18,7 +18,7 @@ function SavedApp(o, r) {
             should_generate_url = ((url_type === 'short_odk_url') && self.short_odk_url && !self.short_odk_url()) ||
                                   ((url_type === 'short_odk_media_url') && self.short_odk_media_url && !self.short_odk_media_url()) ||
                                   ((url_type === 'short_url') && self.short_url && !self.short_url());
-        
+
         if (should_generate_url && !self.generating_url()){
             self.generating_url(true);
             $.ajax({
