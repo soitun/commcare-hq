@@ -133,7 +133,9 @@
             attr: {disabled: !buildButtonEnabled() ? 'disabled' : undefined},
             css: {disabled: !buildButtonEnabled()}
         ">{% trans 'Make New Version' %}</button>
-        <button class="btn btn-primary" data-bind="click: reloadApps">{% trans 'Reload Apps' %}</button>
+        {% if request|toggle_enabled:"APP_VERSION_STATUS" %}
+            <button class="btn btn-primary" data-bind="click: reloadApps">{% trans 'Reload Apps' %}</button>
+        {% endif %}
         <div id="build-errors-wrapper"></div>
         <table class="table">
             <tr>
@@ -151,6 +153,9 @@
                         data-placement="left"
                     ></span>
                 </th>
+                {% if request|toggle_enabled:"APP_VERSION_STATUS" %}
+                    <th>{% trans 'Version Status' %}</th>
+                {% endif %}
             </tr>
             <tbody data-bind="visible: buildState, css: {hide: false}" class="hide">
                 <tr data-bind="visible: buildState() == 'pending'">
@@ -255,6 +260,14 @@
                     <td class="build-is-released">
                         <div data-bind="starred: is_released, click: $root.toggleRelease"></div>
                     </td>
+                    {% if request|toggle_enabled:"APP_VERSION_STATUS" %}
+                        <td>
+                            <div data-bind="text: applicationErrors().length,
+                                            css:{'badge-important': applicationErrors().length > 0,
+                                                 'badge-success': applicationErrors().length === 0}"
+                                 class="badge"></div>
+                        </td>
+                    {% endif %}
                 </tr>
             </tbody>
             <tbody>
