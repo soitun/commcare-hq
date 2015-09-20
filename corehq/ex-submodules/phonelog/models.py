@@ -39,6 +39,7 @@ class UserEntry(models.Model):
 
 
 class _(Document):
+    """ Couchdb needs this for design doc syncing """
     pass
 
 
