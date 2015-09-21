@@ -63,3 +63,9 @@ class TestVersionErrors(TestCase):
 
         errors = get_version_errors(self.domain, "2")
         self.assertItemsEqual(errors, [self.message_1])
+
+    def test_errors_for_different_apps(self):
+        """ Errors for the same build number on different apps in the same domain """
+        # How to implement this?
+        # Is there some way we can get the app id from the xform_id in DeviceReportEntry?
+        self.skipTest("Is this possible?")
