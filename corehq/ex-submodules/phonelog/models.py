@@ -52,4 +52,4 @@ def get_version_errors(domain, application_version):
                .distinct('msg')
                .values_list('msg', flat=True))
 
-    return entries
+    return list(entries)

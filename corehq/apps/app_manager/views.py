@@ -182,6 +182,7 @@ from corehq.apps.app_manager.models import (
     FixtureSelect,
     FormDatum)
 from corehq.apps.app_manager.models import import_app as import_app_util
+from phonelog.models import get_version_errors
 from dimagi.utils.web import get_url_base
 from corehq.apps.app_manager.decorators import safe_download, no_conflict_require_POST, \
     require_can_edit_apps, require_deploy_apps
@@ -826,6 +827,7 @@ def paginate_releases(request, domain, app_id):
     )
     for app in saved_apps:
         app['include_media'] = include_media and app['doc_type'] != 'RemoteApp'
+        app['applicationErrors'] = get_version_errors(domain, app['version'])
     return json_response(saved_apps)
 
 
