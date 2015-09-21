@@ -1,5 +1,6 @@
 from dimagi.ext.couchdbkit import Document
 from django.db import models
+from corehq import toggles
 
 COUCH_UUID_MAX_LEN = 50
 
@@ -44,6 +45,9 @@ class _(Document):
 
 
 def get_version_errors(domain, application_version):
+    if not toggles.APP_VERSION_STATUS.enabled(domain):
+        return None
+
     version_string = "App v{version}.".format(version=application_version)
     entries = (DeviceReportEntry.objects
                .filter(type="exception",
