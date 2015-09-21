@@ -1,0 +1,27 @@
+{% load i18n %}
+{% load hq_shared_tags %}
+
+<script type="text/html" id="version-errors-modal-template">
+    <div class="modal-header">
+        <a href="#" class="close" data-dismiss="modal">×</a>
+        <h3>{% trans "Errors for version" %}
+            <span data-bind="text: version"></span>
+        </h3>
+    </div>
+    <div class="modal-body">
+        <!-- ko if: applicationErrors().length > 0 -->
+        <p>{% trans 'The following errors have been reported in this version:' %}</p>
+        <ul data-bind="">
+            <!-- ko foreach: {data: applicationErrors, as: 'applicationError'} -->
+            <li data-bind="text: applicationError"></li>
+            <!-- /ko -->
+        </ul>
+        <!-- /ko -->
+        <!-- ko if: applicationErrors().length === 0 -->
+        <p>{% trans 'No errors have been logged for this version.' %}</p>
+        <!-- /ko -->
+    </div>
+    <div class="modal-footer">
+        <a href="#" class="btn" data-dismiss="modal">{% trans 'Close' %}</a>
+    </div>
+</script>

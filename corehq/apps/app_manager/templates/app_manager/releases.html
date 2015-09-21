@@ -259,10 +259,12 @@
                     </td>
                     {% if request|toggle_enabled:"APP_VERSION_STATUS" %}
                         <td>
-                            <div data-bind="text: applicationErrors().length,
+                            <div data-bind="openModal: 'version-errors-modal-template',
+                                            text: applicationErrors().length,
                                             css:{'badge-important': applicationErrors().length > 0,
                                                  'badge-success': applicationErrors().length === 0}"
-                                 class="badge"></div>
+                                 class="badge"
+                                 style="cursor: pointer;"></div>
                         </td>
                     {% endif %}
                 </tr>
@@ -291,6 +293,7 @@
             </tbody>
         </table>
         {% include 'app_manager/partials/releases_build_modals.html' %}
+        {% include 'app_manager/partials/releases_version_errors_modal.html' %}
     </div>
 
 <!-- Async Download Modals -->
