@@ -114,18 +114,17 @@ function SavedApp(app_json, releases_manager) {
         new COMMCAREHQ.AsyncDownloader(modal, url);
         // Not so nice... Hide the open modal so we don't get bootstrap recursion errors
         // http://stackoverflow.com/questions/13649459/twitter-bootstrap-multiple-modal-error
-        $('.modal.fade.in').modal('hide')
+        $('.modal.fade.in').modal('hide');
         modal.modal({show: true});
     };
 
     return self;
 }
 
-function ReleasesMain(o) {
+function ReleasesMain(urls, currentAppVersion, recipientContacts) {
     /* {fetchUrl, deleteUrl} */
     var self = this;
-    self.options = o;
-    self.recipients = self.options.recipient_contacts;
+    self.recipients = recipientContacts;
     self.savedApps = ko.observableArray();
     self.doneFetching = ko.observable(false);
     self.buildState = ko.observable('');
@@ -133,7 +132,7 @@ function ReleasesMain(o) {
     self.nextVersionToFetch = null;
     self.fetchLimit = 5;
     self.deployAnyway = {};
-    self.currentAppVersion = ko.observable(self.options.currentAppVersion);
+    self.currentAppVersion = ko.observable(currentAppVersion);
     self.lastAppVersion = ko.observable();
     self.buildButtonEnabled = ko.computed(function () {
         if (self.buildState() === 'pending' || self.fetchState() === 'pending') {
@@ -153,7 +152,7 @@ function ReleasesMain(o) {
         self.lastAppVersion(lastApp ? lastApp.version() : -1);
     });
     self.url = function (name) {
-        var template = self.options.urls[name];
+        var template = urls[name];
         for (var i = 1; i < arguments.length; i++) {
             template = template.replace('___', ko.utils.unwrapObservable(arguments[i]));
         }
