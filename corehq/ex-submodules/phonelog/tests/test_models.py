@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from django.test import TestCase
 from phonelog.models import get_version_errors, DeviceReportEntry
+from corehq import toggles
 
 
 def _create_report(message, version_number, domain, type):
@@ -34,6 +35,13 @@ class TestVersionErrors(TestCase):
 
     def setUp(self):
         self.domain = 'domain'
+        toggles.APP_VERSION_STATUS.set("domain:{domain}".format(domain=self.domain), True)
+
+    def test_not_toggled_returns_none(self):
+        toggles.APP_VERSION_STATUS.set("domain:{domain}".format(domain=self.domain), False)
+        _create_report(self.message_1, "2", self.domain, "exception")
+        errors = get_version_errors(self.domain, "2")
+        self.assertIsNone(errors)
 
     def test_returns_errors_for_version(self):
         _create_report(self.message_1, "2", self.domain, "exception")
