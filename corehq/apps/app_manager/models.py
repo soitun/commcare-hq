@@ -95,6 +95,7 @@ from .exceptions import (
     ScheduleError,
 )
 from corehq.apps.reports.daterange import get_daterange_start_end_dates
+from phonelog.models import get_version_errors
 from jsonpath_rw import jsonpath, parse
 
 WORKFLOW_DEFAULT = 'default'  # go to the app main screen
@@ -4273,6 +4274,7 @@ class SavedAppBuild(ApplicationBase):
             'jar_path': self.get_jar_path(),
             'short_name': self.short_name,
             'enable_offline_install': self.enable_offline_install,
+            'applicationErrors': get_version_errors(self.domain, self.version)
         })
         comment_from = data['comment_from']
         if comment_from:
