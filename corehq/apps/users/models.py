@@ -18,10 +18,12 @@ from corehq.apps.app_manager.const import USERCASE_TYPE
 from corehq.apps.commtrack.dbaccessors import get_supply_point_case_by_location
 from corehq.apps.hqcase.dbaccessors import get_case_ids_in_domain_by_owner
 from corehq.apps.sofabed.models import CaseData
+from corehq.elastic import es_wrapper
 from dimagi.ext.couchdbkit import *
 from couchdbkit.resource import ResourceNotFound
 from corehq.util.view_utils import absolute_reverse
 from dimagi.utils.chunked import chunked
+from dimagi.utils.couch import CriticalSection
 from dimagi.utils.couch.cache import cache_core
 from dimagi.utils.couch.database import get_safe_write_kwargs, iter_docs
 from dimagi.utils.logging import notify_exception
@@ -1038,6 +1040,13 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
         return CouchUser.view("users/by_username", include_docs=True, reduce=False)
 
     @classmethod
+    def username_exists(cls, username):
+        reduced = cls.view('users/by_username', key=username, reduce=True).all()
+        if reduced:
+            return reduced[0]['value'] > 0
+        return False
+
+    @classmethod
     def by_domain(cls, domain, is_active=True, reduce=False, limit=None, skip=0, strict=False, doc_type=None):
         flag = "active" if is_active else "inactive"
         doc_type = doc_type or cls.__name__
@@ -1262,16 +1271,17 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, UnicodeMixIn, EulaMi
 
     def save(self, **params):
         self.clear_quickcache_for_user()
-        # test no username conflict
-        by_username = self.get_db().view('users/by_username', key=self.username, reduce=False).first()
-        if by_username and by_username['id'] != self._id:
-            raise self.Inconsistent("CouchUser with username %s already exists" % self.username)
+        with CriticalSection(['username-check-%s' % self.username], timeout=120):
+            # test no username conflict
+            by_username = self.get_db().view('users/by_username', key=self.username, reduce=False).first()
+            if by_username and by_username['id'] != self._id:
+                raise self.Inconsistent("CouchUser with username %s already exists" % self.username)
 
-        if not self.to_be_deleted():
-            django_user = self.sync_to_django_user()
-            django_user.save()
+            if not self.to_be_deleted():
+                django_user = self.sync_to_django_user()
+                django_user.save()
 
-        super(CouchUser, self).save(**params)
+            super(CouchUser, self).save(**params)
 
         results = couch_user_post_save.send_robust(sender='couch_user', couch_user=self)
         for result in results:
@@ -1566,7 +1576,7 @@ class CommCareUser(CouchUser, SingleMembershipMixin, CommCareMobileContactMixin)
 
     def get_forms(self, deleted=False, wrap=True, include_docs=False):
         if deleted:
-            view_name = 'users/deleted_forms_by_user'
+            view_name = 'deleted_data/deleted_forms_by_user'
             startkey = [self.user_id]
         else:
             view_name = 'reports_forms/all_forms'
@@ -1601,7 +1611,7 @@ class CommCareUser(CouchUser, SingleMembershipMixin, CommCareMobileContactMixin)
 
     def _get_deleted_cases(self):
         case_ids = [r["id"] for r in CommCareCase.get_db().view(
-            'users/deleted_cases_by_user',
+            'deleted_data/deleted_cases_by_user',
             startkey=[self.user_id],
             endkey=[self.user_id, {}],
             reduce=False,
@@ -1643,12 +1653,8 @@ class CommCareUser(CouchUser, SingleMembershipMixin, CommCareMobileContactMixin)
 
     def get_owner_ids(self):
         from corehq.apps.groups.models import Group
-
         owner_ids = [self.user_id]
-        owner_ids.extend(Group.by_user(self, wrap=False))
-
-        if self.project.uses_locations and self.location:
-            owner_ids.extend(self.location_group_ids())
+        owner_ids.extend([g._id for g in self.get_case_sharing_groups()])
         return owner_ids
 
     def retire(self):
@@ -1840,14 +1846,17 @@ class CommCareUser(CouchUser, SingleMembershipMixin, CommCareMobileContactMixin)
         self.save()
 
     @property
-    def _locations(self):
+    def locations(self):
         """
-        Hidden access to a users delgate location list.
+        This method is only used for domains with the multiple
+        locations per user flag set. It will error if you try
+        to call it on a normal domain.
+        """
+        if not self.project.supports_multiple_locations_per_user:
+            raise InvalidLocationConfig(
+                "Attempting to access multiple locations for a user in a domain that does not support this."
+            )
 
-        Should be removed (and this code moved back under
-        self.location) sometime after migration and things
-        are settled.
-        """
         from corehq.apps.locations.models import Location
         from corehq.apps.commtrack.models import SupplyPointCase
 
@@ -1870,20 +1879,6 @@ class CommCareUser(CouchUser, SingleMembershipMixin, CommCareMobileContactMixin)
                 yield Location.wrap(doc)
 
         return list(_gen())
-
-    @property
-    def locations(self):
-        """
-        This method is only used for domains with the multiple
-        locations per user flag set. It will error if you try
-        to call it on a normal domain.
-        """
-        if not self.project.supports_multiple_locations_per_user:
-            raise InvalidLocationConfig(
-                "Attempting to access multiple locations for a user in a domain that does not support this."
-            )
-
-        return self._locations
 
     def supply_point_index_mapping(self, supply_point, clear=False):
         from corehq.apps.commtrack.exceptions import (

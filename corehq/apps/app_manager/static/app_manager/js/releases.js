@@ -134,6 +134,7 @@ function ReleasesMain(urls, currentAppVersion, recipientContacts) {
     self.deployAnyway = {};
     self.currentAppVersion = ko.observable(currentAppVersion);
     self.lastAppVersion = ko.observable();
+    self.selectingVersion = ko.observable("");
     self.buildButtonEnabled = ko.computed(function () {
         if (self.buildState() === 'pending' || self.fetchState() === 'pending') {
             return false;

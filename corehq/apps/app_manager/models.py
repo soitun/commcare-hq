@@ -25,6 +25,8 @@ from django.utils.encoding import force_unicode
 from django.utils.safestring import mark_safe
 from django.utils.translation import override, ugettext as _, ugettext
 from couchdbkit.exceptions import BadValueError
+from corehq.apps.app_manager.suite_xml.utils import get_select_chain
+from corehq.apps.app_manager.suite_xml.generator import SuiteGenerator, MediaSuiteGenerator
 from corehq.util.soft_assert import soft_assert
 from dimagi.ext.couchdbkit import *
 from django.conf import settings
@@ -51,6 +53,7 @@ from dimagi.utils.couch.lazy_attachment_doc import LazyAttachmentDoc
 from dimagi.utils.couch.undo import DeleteRecord, DELETED_SUFFIX
 from dimagi.utils.dates import DateSpan
 from dimagi.utils.decorators.memoized import memoized
+from dimagi.utils.make_uuid import random_hex
 from dimagi.utils.web import get_url_base, parse_int
 from dimagi.utils.couch.database import get_db
 import commcare_translations
@@ -64,7 +67,8 @@ from corehq.apps.users.models import CouchUser
 from corehq.apps.users.util import cc_user_domain
 from corehq.apps.domain.models import cached_property, Domain
 from corehq.apps.app_manager import current_builds, app_strings, remote_app, \
-    id_strings, suite_xml, commcare_settings
+    id_strings, commcare_settings
+from corehq.apps.app_manager.suite_xml import xml_models as suite_models
 from corehq.apps.app_manager.dbaccessors import get_app
 from corehq.apps.app_manager.util import (
     split_path,
@@ -72,7 +76,9 @@ from corehq.apps.app_manager.util import (
     ParentCasePropertyBuilder,
     is_usercase_in_use,
     actions_use_usercase,
-    update_unique_ids)
+    update_unique_ids,
+    app_callout_templates,
+)
 from corehq.apps.app_manager.xform import XForm, parse_xml as _parse_xml, \
     validate_xform
 from corehq.apps.app_manager.templatetags.xforms_extras import trans
@@ -752,7 +758,7 @@ class FormBase(DocumentSchema):
     @classmethod
     def get_form(cls, form_unique_id, and_app=False):
         try:
-            d = get_db().view(
+            d = Application.get_db().view(
                 'app_manager/xforms_index',
                 key=form_unique_id
             ).one()
@@ -1845,7 +1851,7 @@ class ModuleBase(IndexedSchema, NavMenuItemMediaMixin):
             detail.rename_lang(old_lang, new_lang)
 
     def validate_detail_columns(self, columns):
-        from corehq.apps.app_manager.suite_xml import FIELD_TYPE_LOCATION
+        from corehq.apps.app_manager.suite_xml.const import FIELD_TYPE_LOCATION
         from corehq.apps.locations.util import parent_child
         hierarchy = None
         for column in columns:
@@ -2656,7 +2662,7 @@ class AdvancedModule(ModuleBase):
 
                 if from_module.parent_select.active:
                     app = self.get_app()
-                    select_chain = suite_xml.SuiteGenerator.get_select_chain(app, from_module, include_self=False)
+                    select_chain = get_select_chain(app, from_module, include_self=False)
                     for n, link in enumerate(reversed(list(enumerate(select_chain)))):
                         i, module = link
                         new_form.actions.load_update_cases.append(LoadUpdateAction(
@@ -3299,15 +3305,14 @@ class ReportAppConfig(DocumentSchema):
     header = DictProperty()
     graph_configs = DictProperty(ReportGraphConfig)
     filters = SchemaDictProperty(ReportAppFilter)
-    uuid = StringProperty(default='')
+    uuid = StringProperty(required=True)
 
     _report = None
 
-    @classmethod
-    def wrap(cls, obj):
-        # todo: can remove once existing ReportAppConfig have been migrated
-        _soft_assert_uuid(obj.get('uuid'), 'Check uuids for apps containing UCR %s' % obj.get('report_id'))
-        return super(ReportAppConfig, cls).wrap(obj)
+    def __init__(self, *args, **kwargs):
+        super(ReportAppConfig, self).__init__(*args, **kwargs)
+        if not self.uuid:
+            self.uuid = random_hex()
 
     @property
     def report(self):
@@ -3333,21 +3338,21 @@ class ReportAppConfig(DocumentSchema):
         yield (self.summary_detail_id, self.summary_details(), True)
 
     def select_details(self):
-        return Detail(custom_xml=suite_xml.Detail(
+        return Detail(custom_xml=suite_models.Detail(
             id='reports.{}.select'.format(self.uuid),
-            title=suite_xml.Text(
-                locale=suite_xml.Locale(id=id_strings.report_menu()),
+            title=suite_models.Text(
+                locale=suite_models.Locale(id=id_strings.report_menu()),
             ),
             fields=[
-                suite_xml.Field(
-                    header=suite_xml.Header(
-                        text=suite_xml.Text(
-                            locale=suite_xml.Locale(id=id_strings.report_name_header()),
+                suite_models.Field(
+                    header=suite_models.Header(
+                        text=suite_models.Text(
+                            locale=suite_models.Locale(id=id_strings.report_name_header()),
                         )
                     ),
-                    template=suite_xml.Template(
-                        text=suite_xml.Text(
-                            locale=suite_xml.Locale(id=id_strings.report_name(self.uuid))
+                    template=suite_models.Template(
+                        text=suite_models.Text(
+                            locale=suite_models.Locale(id=id_strings.report_name(self.uuid))
                         )
                     ),
                 )
@@ -3363,75 +3368,75 @@ class ReportAppConfig(DocumentSchema):
                     graph_config = self.graph_configs.get(chart_config.chart_id, ReportGraphConfig())
 
                     def _column_to_series(column):
-                        return suite_xml.Series(
+                        return suite_models.Series(
                             nodeset="instance('reports')/reports/report[@id='{}']/rows/row".format(self.uuid),
                             x_function="column[@id='{}']".format(chart_config.x_axis_column),
                             y_function="column[@id='{}']".format(column),
-                            configuration=suite_xml.ConfigurationGroup(configs=[
-                                suite_xml.ConfigurationItem(id=key, xpath_function=value)
+                            configuration=suite_models.ConfigurationGroup(configs=[
+                                suite_models.ConfigurationItem(id=key, xpath_function=value)
                                 for key, value in graph_config.series_configs.get(column, {}).items()
                             ])
                         )
-                    yield suite_xml.Field(
-                        header=suite_xml.Header(text=suite_xml.Text()),
-                        template=suite_xml.GraphTemplate(
+                    yield suite_models.Field(
+                        header=suite_models.Header(text=suite_models.Text()),
+                        template=suite_models.GraphTemplate(
                             form='graph',
-                            graph=suite_xml.Graph(
+                            graph=suite_models.Graph(
                                 type=graph_config.graph_type,
                                 series=[_column_to_series(c) for c in chart_config.y_axis_columns],
-                                configuration=suite_xml.ConfigurationGroup(configs=[
-                                    suite_xml.ConfigurationItem(id=key, xpath_function=value)
+                                configuration=suite_models.ConfigurationGroup(configs=[
+                                    suite_models.ConfigurationItem(id=key, xpath_function=value)
                                     for key, value in graph_config.config.items()
                                 ]),
                             ),
                         )
                     )
 
-        return Detail(custom_xml=suite_xml.Detail(
+        return Detail(custom_xml=suite_models.Detail(
             id='reports.{}.summary'.format(self.uuid),
-            title=suite_xml.Text(
-                locale=suite_xml.Locale(id=id_strings.report_menu()),
+            title=suite_models.Text(
+                locale=suite_models.Locale(id=id_strings.report_menu()),
             ),
             details=[
-                suite_xml.Detail(
-                    title=suite_xml.Text(
-                        locale=suite_xml.Locale(id=id_strings.report_menu()),
+                suite_models.Detail(
+                    title=suite_models.Text(
+                        locale=suite_models.Locale(id=id_strings.report_menu()),
                     ),
                     fields=[
-                        suite_xml.Field(
-                            header=suite_xml.Header(
-                                text=suite_xml.Text(
-                                    locale=suite_xml.Locale(id=id_strings.report_name_header())
+                        suite_models.Field(
+                            header=suite_models.Header(
+                                text=suite_models.Text(
+                                    locale=suite_models.Locale(id=id_strings.report_name_header())
                                 )
                             ),
-                            template=suite_xml.Template(
-                                text=suite_xml.Text(
-                                    locale=suite_xml.Locale(id=id_strings.report_name(self.uuid))
+                            template=suite_models.Template(
+                                text=suite_models.Text(
+                                    locale=suite_models.Locale(id=id_strings.report_name(self.uuid))
                                 )
                             ),
                         ),
-                        suite_xml.Field(
-                            header=suite_xml.Header(
-                                text=suite_xml.Text(
-                                    locale=suite_xml.Locale(id=id_strings.report_description_header()),
+                        suite_models.Field(
+                            header=suite_models.Header(
+                                text=suite_models.Text(
+                                    locale=suite_models.Locale(id=id_strings.report_description_header()),
                                 )
                             ),
-                            template=suite_xml.Template(
-                                text=suite_xml.Text(
-                                    xpath=suite_xml.Xpath(function='description')
+                            template=suite_models.Template(
+                                text=suite_models.Text(
+                                    xpath=suite_models.Xpath(function='description')
                                 )
                             ),
                         ),
                     ] + list(_get_graph_fields()) + [
-                        suite_xml.Field(
-                            header=suite_xml.Header(
-                                text=suite_xml.Text(
-                                    locale=suite_xml.Locale(id=id_strings.report_last_sync())
+                        suite_models.Field(
+                            header=suite_models.Header(
+                                text=suite_models.Text(
+                                    locale=suite_models.Locale(id=id_strings.report_last_sync())
                                 )
                             ),
-                            template=suite_xml.Template(
-                                text=suite_xml.Text(
-                                    xpath=suite_xml.Xpath(
+                            template=suite_models.Template(
+                                text=suite_models.Text(
+                                    xpath=suite_models.Xpath(
                                         function="format-date(date(instance('reports')/reports/@last_sync), '%Y-%m-%d %H:%M')"
                                     )
                                 )
@@ -3445,39 +3450,39 @@ class ReportAppConfig(DocumentSchema):
 
     def data_detail(self):
         def _column_to_field(column):
-            return suite_xml.Field(
-                header=suite_xml.Header(
-                    text=suite_xml.Text(
-                        locale=suite_xml.Locale(
+            return suite_models.Field(
+                header=suite_models.Header(
+                    text=suite_models.Text(
+                        locale=suite_models.Locale(
                             id=id_strings.report_column_header(self.uuid, column.column_id)
                         ),
                     )
                 ),
-                template=suite_xml.Template(
-                    text=suite_xml.Text(
-                        xpath=suite_xml.Xpath(function="column[@id='{}']".format(column.column_id)))
+                template=suite_models.Template(
+                    text=suite_models.Text(
+                        xpath=suite_models.Xpath(function="column[@id='{}']".format(column.column_id)))
                 ),
             )
 
-        return suite_xml.Detail(
+        return suite_models.Detail(
             id='reports.{}.data'.format(self.uuid),
             nodeset='rows/row',
-            title=suite_xml.Text(
-                locale=suite_xml.Locale(id=id_strings.report_data_table()),
+            title=suite_models.Text(
+                locale=suite_models.Locale(id=id_strings.report_data_table()),
             ),
             fields=[_column_to_field(c) for c in self.report.report_columns]
         )
 
     def get_entry(self):
-        return suite_xml.Entry(
-            command=suite_xml.Command(
+        return suite_models.Entry(
+            command=suite_models.Command(
                 id='reports.{}'.format(self.uuid),
-                text=suite_xml.Text(
-                    locale=suite_xml.Locale(id=id_strings.report_name(self.uuid)),
+                text=suite_models.Text(
+                    locale=suite_models.Locale(id=id_strings.report_name(self.uuid)),
                 ),
             ),
             datums=[
-                suite_xml.SessionDatum(
+                suite_models.SessionDatum(
                     detail_confirm=self.summary_detail_id,
                     detail_select=self.select_detail_id,
                     id='report_id_{}'.format(self.uuid),
@@ -3536,13 +3541,13 @@ class ReportModule(ModuleBase):
             yield config.get_entry()
 
     def get_menus(self):
-        yield suite_xml.Menu(
+        yield suite_models.Menu(
             id=id_strings.menu_id(self),
-            text=suite_xml.Text(
-                locale=suite_xml.Locale(id=id_strings.module_locale(self))
+            text=suite_models.Text(
+                locale=suite_models.Locale(id=id_strings.module_locale(self))
             ),
             commands=[
-                suite_xml.Command(id=id_strings.report_command(config.uuid))
+                suite_models.Command(id=id_strings.report_command(config.uuid))
                 for config in self.report_configs
             ]
         )
@@ -3722,7 +3727,6 @@ class ApplicationBase(VersionedDoc, SnapshotMixin,
         choices=['roman', 'native', 'custom-keys', 'qwerty'],
         default="roman"
     )
-    success_message = DictProperty()
 
     # The following properties should only appear on saved builds
     # built_with stores a record of CommCare build used in a saved app
@@ -4011,6 +4015,29 @@ class ApplicationBase(VersionedDoc, SnapshotMixin,
                             "subscription before using this feature."
                         ))
 
+    def validate_intents(self):
+        if domain_has_privilege(self.domain, privileges.CUSTOM_INTENTS):
+            return
+
+        if hasattr(self, 'get_forms'):
+            for form in self.get_forms():
+                intents = form.wrapped_xform().odk_intents
+                if intents:
+                    if not domain_has_privilege(self.domain, privileges.TEMPLATED_INTENTS):
+                        raise PermissionDenied(_(
+                            "Usage of integrations is not supported by your "
+                            "current subscription. Please upgrade your "
+                            "subscription before using this feature."
+                        ))
+                    else:
+                        templates = next(app_callout_templates)
+                        if len(set(intents) - set(t['id'] for t in templates)):
+                            raise PermissionDenied(_(
+                                "Usage of external integration is not supported by your "
+                                "current subscription. Please upgrade your "
+                                "subscription before using this feature."
+                            ))
+
     def validate_jar_path(self):
         build = self.get_build()
         setting = commcare_settings.get_commcare_settings_lookup()['hq']['text_input']
@@ -4084,6 +4111,7 @@ class ApplicationBase(VersionedDoc, SnapshotMixin,
 
         try:
             self.validate_fixtures()
+            self.validate_intents()
             self.validate_jar_path()
             self.create_all_files()
         except (AppEditingError, XFormValidationError, XFormException,
@@ -4573,10 +4601,10 @@ class Application(ApplicationBase, TranslationMixin, HQMediaMixin):
                 'langs': ["default"] + self.build_langs
             })
         else:
-            return suite_xml.SuiteGenerator(self).generate_suite()
+            return SuiteGenerator(self).generate_suite()
 
     def create_media_suite(self):
-        return suite_xml.MediaSuiteGenerator(self).generate_suite()
+        return MediaSuiteGenerator(self).generate_suite()
 
     @classmethod
     def get_form_filename(cls, type=None, form=None, module=None):
@@ -4963,15 +4991,6 @@ class Application(ApplicationBase, TranslationMixin, HQMediaMixin):
         if not root_ids.issubset(module_ids):
             module_errors.append({'type': 'unknown root'})
         return module_errors
-
-    @classmethod
-    def get_by_xmlns(cls, domain, xmlns):
-        r = cls.get_db().view('exports_forms/by_xmlns',
-            key=[domain, {}, xmlns],
-            group=True,
-            stale=settings.COUCH_STALE_QUERY,
-        ).one()
-        return cls.get(r['value']['app']['id']) if r and 'app' in r['value'] else None
 
     def get_profile_setting(self, s_type, s_id):
         setting = self.profile.get(s_type, {}).get(s_id)

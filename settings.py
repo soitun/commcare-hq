@@ -86,10 +86,37 @@ LOCALE_PATHS = (
     os.path.join(FILEPATH, 'locale'),
 )
 
+# Do not change, there's a weird bug with Django 1.7 that requires this to be bower_components when using
+# collectstatic
+BOWER_COMPONENTS_ROOT = os.path.join(FILEPATH, 'bower_components')
+
+BOWER_INSTALLED_APPS = (
+    'jquery#1.11.1',
+    'jquery-1.7.1-legacy=jquery#1.7.1',
+    'underscore#1.6.0',
+    'underscore-legacy=underscore#1.4.4',
+    'jquery-form#3.45.0',
+    'jquery.cookie#1.4.1',
+    'jquery-timeago#1.2.0',
+    'angular#1.4.4',
+    'angular-route#1.4.4',
+    'angular-resource#1.4.4',
+    'angular-message-format#1.4.4',
+    'angular-messages#1.4.4',
+    'angular-cookies#1.4.4',
+    'angular-sanitize#1.4.4',
+    'select2-3.4.5-legacy=select2#3.4.5',
+    'less#1.7.3',
+    'backbone#0.9.1',
+)
+
+BOWER_PATH = '/usr/local/bin/bower'
+
 STATICFILES_FINDERS = (
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
     'compressor.finders.CompressorFinder',
+    'djangobower.finders.BowerFinder',
 )
 
 STATICFILES_DIRS = ()
@@ -181,6 +208,7 @@ DEFAULT_APPS = (
     'djcelery',
     'djtables',
     'django_prbac',
+    'djangobower',
     'djkombu',
     'djangular',
     'couchdbkit.ext.django',
@@ -228,6 +256,7 @@ HQ_APPS = (
     'corehq.apps.commtrack',
     'corehq.apps.consumption',
     'corehq.apps.tzmigration',
+    'corehq.form_processor',
     'couchforms',
     'couchexport',
     'couchlog',
@@ -299,6 +328,7 @@ HQ_APPS = (
     'corehq.apps.dashboard',
     'corehq.util',
     'dimagi.ext',
+    'corehq.doctypemigrations',
 
     # custom reports
     'a5288',
@@ -339,6 +369,10 @@ HQ_APPS = (
 
     'custom.dhis2',
     'custom.guinea_backup',
+
+    # tests only
+    # todo: figure out how to not put these into INSTALLED_APPS, TEST_APPS doesn't seem to work
+    'testapps.test_pillowtop',
 )
 
 TEST_APPS = ()
@@ -358,6 +392,7 @@ APPS_TO_EXCLUDE_FROM_TESTS = (
     'corehq.apps.yo',
     'crispy_forms',
     'django_extensions',
+    'djangobower',
     'django_prbac',
     'djcelery',
     'djtables',
@@ -924,11 +959,6 @@ BANK_SWIFT_CODE = ''
 STRIPE_PUBLIC_KEY = ''
 STRIPE_PRIVATE_KEY = ''
 
-# Mailchimp
-MAILCHIMP_APIKEY = ''
-MAILCHIMP_COMMCARE_USERS_ID = ''
-MAILCHIMP_MASS_EMAIL_ID = ''
-
 SQL_REPORTING_DATABASE_URL = None
 UCR_DATABASE_URL = None
 
@@ -951,6 +981,10 @@ SUBSCRIPTION_PASSWORD = None
 ENVIRONMENT_HOSTS = {
     'pillowtop': ['localhost']
 }
+
+# Override with the PEM export of an RSA private key, for use with any
+# encryption or signing workflows.
+HQ_PRIVATE_KEY = None
 
 try:
     # try to see if there's an environmental variable set for local_settings
@@ -1012,6 +1046,10 @@ if not SQL_REPORTING_DATABASE_URL or UNIT_TESTING:
         **db_settings
     )
 
+if not UCR_DATABASE_URL or UNIT_TESTING:
+    # by default just use the reporting DB for UCRs
+    UCR_DATABASE_URL = SQL_REPORTING_DATABASE_URL
+
 MVP_INDICATOR_DB = 'mvp-indicators'
 
 INDICATOR_CONFIG = {
@@ -1039,6 +1077,10 @@ _dynamic_db_settings = get_dynamic_db_settings(
 COUCH_SERVER = _dynamic_db_settings["COUCH_SERVER"]
 COUCH_DATABASE = _dynamic_db_settings["COUCH_DATABASE"]
 
+NEW_USERS_GROUPS_DB = 'users'
+USERS_GROUPS_DB = NEW_USERS_GROUPS_DB
+
+
 COUCHDB_APPS = [
     'api',
     'app_manager',
@@ -1047,7 +1089,6 @@ COUCHDB_APPS = [
     'builds',
     'case',
     'casegroups',
-    'callcenter',
     'cleanup',
     'cloudcare',
     'commtrack',
@@ -1066,7 +1107,6 @@ COUCHDB_APPS = [
     'facilities',
     'fluff_filter',
     'fixtures',
-    'groups',
     'hqcase',
     'hqmedia',
     'hope',
@@ -1087,7 +1127,6 @@ COUCHDB_APPS = [
     'telerivet',
     'toggle',
     'translations',
-    'users',
     'utils',  # dimagi-utils
     'formplayer',
     'phonelog',
@@ -1127,13 +1166,19 @@ COUCHDB_APPS = [
     ('mc', 'fluff-mc'),
     ('m4change', 'm4change'),
     ('export', 'meta'),
-    'tdhtesting'
+    'tdhtesting',
+    ('callcenter', 'meta'),
+
+    # users and groups
+    ('groups', USERS_GROUPS_DB),
+    ('users', USERS_GROUPS_DB),
 ]
 
 COUCHDB_APPS += LOCAL_COUCHDB_APPS
 
 COUCHDB_DATABASES = make_couchdb_tuples(COUCHDB_APPS, COUCH_DATABASE)
-EXTRA_COUCHDB_DATABASES = get_extra_couchdbs(COUCHDB_APPS, COUCH_DATABASE)
+EXTRA_COUCHDB_DATABASES = get_extra_couchdbs(COUCHDB_APPS, COUCH_DATABASE,
+                                             [NEW_USERS_GROUPS_DB])
 
 INSTALLED_APPS += LOCAL_APPS
 
@@ -1319,7 +1364,14 @@ PILLOWTOPS = {
 
 STATIC_UCR_REPORTS = [
     os.path.join('custom', '_legacy', 'mvp', 'ucr', 'reports', 'deidentified_va_report.json'),
-    os.path.join('custom', 'abt', 'reports', 'incident_report.json')
+    os.path.join('custom', 'abt', 'reports', 'incident_report.json'),
+    os.path.join('custom', 'abt', 'reports', 'sms_indicator_report.json'),
+    os.path.join('custom', 'abt', 'reports', 'spray_progress_country.json'),
+    os.path.join('custom', 'abt', 'reports', 'spray_progress_level_1.json'),
+    os.path.join('custom', 'abt', 'reports', 'spray_progress_level_2.json'),
+    os.path.join('custom', 'abt', 'reports', 'spray_progress_level_3.json'),
+    os.path.join('custom', 'abt', 'reports', 'spray_progress_level_4.json'),
+    os.path.join('custom', 'abt', 'reports', 'supervisory_report.json'),
 ]
 
 
