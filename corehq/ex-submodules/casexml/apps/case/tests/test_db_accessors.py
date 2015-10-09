@@ -1,13 +1,13 @@
 import uuid
-from django.test import TestCase
 
-from corehq.apps.hqcase.dbaccessors import get_total_case_count
-
-from casexml.apps.case.dbaccessors.related import get_extension_case_ids
+from casexml.apps.case.const import CASE_INDEX_CHILD, CASE_INDEX_EXTENSION
+from casexml.apps.case.dbaccessors.related import get_extension_case_ids, \
+    get_indexed_case_ids
 from casexml.apps.case.mock import CaseFactory, CaseIndex, CaseStructure
 from casexml.apps.case.models import CommCareCase
 from casexml.apps.case.tests import delete_all_cases
-from casexml.apps.case.const import CASE_INDEX_CHILD, CASE_INDEX_EXTENSION
+from corehq.apps.hqcase.dbaccessors import get_total_case_count
+from django.test import TestCase
 
 
 class TestCaseByOwner(TestCase):
@@ -122,3 +122,30 @@ class TestExtensionCaseIds(TestCase):
         )
         returned_cases = get_extension_case_ids(self.domain, [host_id, host_2_id])
         self.assertItemsEqual(returned_cases, [extension_id, extension_2_id])
+
+
+class TestIndexedCaseIds(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        delete_all_cases()
+
+    def setUp(self):
+        self.domain = 'domain'
+        self.factory = CaseFactory(self.domain)
+
+    def test_indexed_case_ids_returns_extensions(self):
+        """ When getting indices, also return extensions """
+        host_id = uuid.uuid4().hex
+        extension_id = uuid.uuid4().hex
+        host = CaseStructure(case_id=host_id)
+
+        self.factory.create_or_update_case(
+            CaseStructure(
+                case_id=extension_id,
+                indices=[
+                    CaseIndex(host, relationship=CASE_INDEX_EXTENSION)
+                ]
+            )
+        )
+        returned_cases = get_indexed_case_ids(self.domain, [extension_id])
+        self.assertItemsEqual(returned_cases, [host_id])
