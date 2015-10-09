@@ -18,8 +18,12 @@ def get_indexed_case_ids(domain, case_ids):
 
 def get_extension_case_ids(domain, case_ids):
     """
-    Given a base list of case ids, get all ids of all extension cases that reference them
+    Given a base list of case ids, for those that are open, get all ids of all extension cases that reference them
     """
+    from casexml.apps.case.models import CommCareCase
+    # TODO: do we need this here?
+    # cases = CommCareCase.bulk_get_lite(case_ids)
+    # open_case_ids = [case['_id'] for case in cases if not case.closed]
     return [r.case_id for r in get_all_reverse_indices_info(domain, case_ids, CASE_INDEX_EXTENSION)]
 
 

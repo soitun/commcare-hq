@@ -3,6 +3,7 @@ from django.test import SimpleTestCase, TestCase
 from django.test.utils import override_settings
 from casexml.apps.case.mock import CaseFactory, CaseStructure, CaseIndex
 from casexml.apps.case.const import CASE_INDEX_EXTENSION
+from casexml.apps.case.tests.util import delete_all_cases
 from casexml.apps.phone.cleanliness import set_cleanliness_flags, hint_still_valid, \
     get_cleanliness_flag_from_scratch, get_case_footprint_info
 from casexml.apps.phone.data_providers.case.clean_owners import pop_ids

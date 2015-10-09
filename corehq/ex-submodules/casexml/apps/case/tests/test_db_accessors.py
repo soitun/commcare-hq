@@ -27,6 +27,7 @@ class TestCaseByOwner(TestCase):
 
 
 class TestExtensionCaseIds(TestCase):
+
     @classmethod
     def setUpClass(cls):
         delete_all_cases()
@@ -94,6 +95,30 @@ class TestExtensionCaseIds(TestCase):
         self.assertItemsEqual(returned_cases, [extension_id])
         returned_cases = get_extension_case_ids(self.domain, [host_id])
         self.assertItemsEqual(returned_cases, [extension_id])
+
+    def test_extension_of_closed_case_not_returned(self):
+        """ Extensions shouldn't be returned for closed cases """
+        # TODO: failing test right now, figure out where this should happen
+        # Either purge out extensions that are of closed cases at a later time
+        # Or only fetch extensions from open cases from couch.
+        # Figure out how to fetch the status of a cases without needing to hit the db again
+        self.skipTest("fails. need to figure out the logic here")
+
+        host_id = uuid.uuid4().hex
+        extension_id = uuid.uuid4().hex
+        host = CaseStructure(case_id=host_id, attrs={'close': True})
+
+        self.factory.create_or_update_case(
+            CaseStructure(
+                case_id=extension_id,
+                indices=[
+                    CaseIndex(host, relationship=CASE_INDEX_EXTENSION)
+                ]
+            )
+        )
+        returned_cases = get_extension_case_ids(self.domain, [host_id])
+
+        self.assertItemsEqual(returned_cases, [])
 
     def test_extensions_from_list(self):
         """ Given a list of hosts, should return all extensions """
