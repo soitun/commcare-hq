@@ -1,5 +1,6 @@
 from collections import namedtuple
 from casexml.apps.case.sharedmodels import CommCareCaseIndex
+from casexml.apps.case.const import CASE_INDEX_CHILD, CASE_INDEX_EXTENSION
 
 
 def get_indexed_case_ids(domain, case_ids):
@@ -13,6 +14,13 @@ def get_indexed_case_ids(domain, case_ids):
         keys=keys,
         reduce=False,
     )]
+
+
+def get_extension_case_ids(domain, case_ids):
+    """
+    Given a base list of case ids, get all ids of all extension cases that reference them
+    """
+    return [r.case_id for r in get_all_reverse_indices_info(domain, case_ids, CASE_INDEX_EXTENSION)]
 
 
 def get_reverse_indexed_case_ids(domain, case_ids):
