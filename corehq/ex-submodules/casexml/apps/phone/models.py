@@ -663,7 +663,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
                 self.indices_to_add = []
                 self.indices_to_delete = []
 
-        ShortIndex = namedtuple('ShortIndex', ['case_id', 'identifier', 'referenced_id'])
+        ShortIndex = namedtuple('ShortIndex', ['case_id', 'identifier', 'referenced_id', 'relationship', 'owner_id'])
 
         # this is a variable used via closures in the function below
         owner_id_map = {}
@@ -693,7 +693,8 @@ class SimplifiedSyncLog(AbstractSyncLog):
                     for index in action.indices:
                         if index.referenced_id:
                             case_update.indices_to_add.append(
-                                ShortIndex(case._id, index.identifier, index.referenced_id)
+                                ShortIndex(case._id, index.identifier, index.referenced_id,
+                                           index.relationship, owner_id)
                             )
                         else:
                             case_update.indices_to_delete.append(
@@ -703,12 +704,21 @@ class SimplifiedSyncLog(AbstractSyncLog):
                     case_update.is_closed = True
 
         def _add_index(index):
-            logger.debug('adding index {} -> {} ({}).'.format(
-                index.case_id, index.referenced_id, index.identifier))
+            logger.debug('adding index {} --<{}>--> {} ({}).'.format(
+                index.case_id, index.relationship, index.referenced_id, index.identifier))
+
+            if index.relationship == const.CASE_INDEX_EXTENSION:
+                _add_extension(index)
+
             self.index_tree.set_index(index.case_id, index.identifier, index.referenced_id)
             if index.referenced_id not in self.case_ids_on_phone:
                 self.case_ids_on_phone.add(index.referenced_id)
                 self.dependent_case_ids_on_phone.add(index.referenced_id)
+
+        def _add_extension(index):
+            self.extension_case_ids_on_phone.add(index.case_id)
+            if index.owner_id == const.CASE_INDEX_EXTENSION_OWNER_ID:
+                self.dependent_case_ids_on_phone.add(index.case_id)
 
         def _is_live(case_update, owner_ids):
             if case_update.is_closed:

@@ -5,7 +5,7 @@ from django.test.utils import override_settings
 from django.test import TestCase
 import os
 from casexml.apps.phone.exceptions import MissingSyncLog, RestoreException
-from casexml.apps.phone.tests.restore_test_utils import run_with_all_restore_configs
+from casexml.apps.phone.tests.restore_test_utils import run_with_all_restore_configs, run_with_cleanliness_restore
 from casexml.apps.phone.tests.utils import get_exactly_one_wrapped_sync_log, generate_restore_payload
 from casexml.apps.case.mock import CaseBlock, CaseFactory, CaseStructure, CaseIndex
 from casexml.apps.phone.tests.utils import synclog_from_restore_payload
@@ -20,6 +20,7 @@ from casexml.apps.phone.models import SyncLog, User, get_properly_wrapped_sync_l
 from casexml.apps.phone.restore import CachedResponse, RestoreConfig, RestoreParams, RestoreCacheSettings
 from casexml.apps.case.xml import V2, V1
 from casexml.apps.case.sharedmodels import CommCareCaseIndex
+from casexml.apps.case.const import CASE_INDEX_EXTENSION
 from datetime import datetime
 
 USER_ID = "main_user"
@@ -694,6 +695,61 @@ class SyncTokenUpdateTest(SyncBaseTest):
         # before this test was written, the case stayed on the sync log even though it was closed
         self.assertFalse(sync_log.phone_is_holding_case(case_id))
 
+
+class ExtensionCasesSyncTest(SyncBaseTest):
+
+    @run_with_cleanliness_restore
+    def test_open_extension_case_syncs_parent(self):
+        """Open extension case pulls in open parent
+        'Sub pulls in super'
+        """
+        case_type = 'case'
+        host = CaseStructure(case_id=uuid.uuid4().hex,
+                             attrs={'create': True, 'owner_id': OTHER_USER_ID})
+        extension = CaseStructure(
+            case_id=uuid.uuid4().hex,
+            attrs={'create': True},
+            indices=[CaseIndex(
+                host,
+                identifier='host',
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+        index_ref = CommCareCaseIndex(identifier='host',
+                                      referenced_type=case_type,
+                                      referenced_id=host.case_id)
+
+        self.factory.create_or_update_cases([extension])
+        self._testUpdate(self.sync_log._id,
+                         {extension.case_id: [index_ref]},
+                         dependent_case_id_map={host.case_id: []},
+                         extension_case_ids=[extension.case_id])
+
+    @run_with_cleanliness_restore
+    def test_host_with_extension(self):
+        """Open extension. Host pulls in extension
+        'Super pulls in sub if open'
+        """
+        case_type = 'case'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                host,
+                identifier='host',
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+        self.factory.create_or_update_cases([extension])
+
+        self._testUpdate(self.sync_log._id,
+                         case_id_map={host.case_id: []},
+                         dependent_case_id_map={extension.case_id: []},
+                         extension_case_ids=[extension.case_id])
 
 class ChangingOwnershipTest(SyncBaseTest):
 
