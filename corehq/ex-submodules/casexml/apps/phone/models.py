@@ -710,7 +710,8 @@ class SimplifiedSyncLog(AbstractSyncLog):
                 # we likely didn't touch owner_id so assume it was previously live and still is
                 return True
             else:
-                return case_update.final_owner_id in owner_ids
+                return (case_update.final_owner_id in owner_ids
+                        or case_update.final_owner_id == const.CASE_INDEX_EXTENSION_OWNER_ID)
 
         non_live_updates = []
         for case in case_list:
