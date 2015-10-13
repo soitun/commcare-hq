@@ -88,7 +88,8 @@ class SyncBaseTest(TestCase):
     def _checkLists(self, l1, l2, msg=None):
         self.assertEqual(set(l1), set(l2), msg)
 
-    def _testUpdate(self, sync_log_or_id, case_id_map, dependent_case_id_map=None):
+    def _testUpdate(self, sync_log_or_id, case_id_map, dependent_case_id_map=None,
+                    extension_case_ids=None,):
         dependent_case_id_map = dependent_case_id_map or {}
         if isinstance(sync_log_or_id, AbstractSyncLog):
             sync_log = sync_log_or_id
@@ -101,6 +102,7 @@ class SyncBaseTest(TestCase):
             all_ids.update(dependent_case_id_map)
             self.assertEqual(set(all_ids), sync_log.case_ids_on_phone)
             self.assertEqual(set(dependent_case_id_map.keys()), sync_log.dependent_case_ids_on_phone)
+            self.assertEqual(set(extension_case_ids), sync_log.extension_case_ids_on_phone)
             for case_id, indices in case_id_map.items():
                 if indices:
                     index_ids = [i.referenced_id for i in case_id_map[case_id]]

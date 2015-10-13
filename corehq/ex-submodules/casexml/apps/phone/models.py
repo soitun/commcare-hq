@@ -543,6 +543,13 @@ class SimplifiedSyncLog(AbstractSyncLog):
     # this is a subset of case_ids_on_phone used to flag that a case is only around because it has dependencies
     # this allows us to prune it if possible from other actions
     dependent_case_ids_on_phone = SetProperty(unicode)
+
+    # an extension case is on the phone if it is dependent on another case, or if it is directly owned.
+    # if it is dependent on another case, then it will also feature in dependent_case_ids on phone,
+    # if it is directly owned by the user (i.e. it has been delegated to this user), then the
+    # referenced case of that case's extension index will be in dependent_case_ids_on_phone
+    extension_case_ids_on_phone = SetProperty(unicode)
+
     owner_ids_on_phone = SetProperty(unicode)
     index_tree = SchemaProperty(IndexTree)
 
