@@ -751,6 +751,103 @@ class ExtensionCasesSyncTest(SyncBaseTest):
                          dependent_case_id_map={extension.case_id: []},
                          extension_case_ids=[extension.case_id])
 
+class ExtensionCasesSyncTrees(SyncBaseTest):
+    """Makes sure the extension case trees are propertly updated
+    """
+
+    @run_with_cleanliness_restore
+    def test_create_extension(self):
+        """creating an extension should add it to the extension_index_tree
+        """
+        case_type = 'case'
+        index_identifier = 'idx'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                host,
+                identifier=index_identifier,
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+
+        self.factory.create_or_update_cases([extension])
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertDictEqual(sync_log.index_tree.indices, {})
+        self.assertDictEqual(sync_log.extension_index_tree.indices,
+                             {extension.case_id: {index_identifier: host.case_id}})
+        self.assertEqual(sync_log.dependent_case_ids_on_phone, set([extension.case_id]))
+        self.assertEqual(sync_log.case_ids_on_phone, set([extension.case_id, host.case_id]))
+
+    @run_with_cleanliness_restore
+    def test_create_multiple_indices(self):
+        """creating multiple indices should add to the right tree
+        """
+        case_type = 'case'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                host,
+                identifier='host',
+                relationship='extension',
+                related_type=case_type,
+            ), CaseIndex(
+                CaseStructure(case_id=host.case_id, attrs={'create': False}),
+                identifier='child',
+                relationship='child',
+                related_type=case_type,
+            )],
+        )
+
+        self.factory.create_or_update_cases([extension])
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertDictEqual(sync_log.index_tree.indices,
+                             {extension.case_id: {'child': host.case_id}})
+        self.assertDictEqual(sync_log.extension_index_tree.indices,
+                             {extension.case_id: {'host': host.case_id}})
+
+    @run_with_cleanliness_restore
+    def test_create_extension_with_extension(self):
+        """creating multiple extensions should be added to the right tree
+        """
+        case_type = 'case'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                host,
+                identifier='host',
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+        extension_extension = CaseStructure(
+            case_id='extension_extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                extension,
+                identifier='host_2',
+                relationship='extension',
+                related_type=case_type,
+            )]
+        )
+
+        self.factory.create_or_update_cases([extension_extension])
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        expected_extension_tree = {extension.case_id: {'host': host.case_id},
+                                   extension_extension.case_id: {'host_2': extension.case_id}}
+        self.assertDictEqual(sync_log.index_tree.indices, {})
+        self.assertDictEqual(sync_log.extension_index_tree.indices, expected_extension_tree)
+
+
 class ChangingOwnershipTest(SyncBaseTest):
 
     def setUp(self):
