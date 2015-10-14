@@ -606,6 +606,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
         # and therefore not directly owned
         candidates_to_remove = dependencies & self.dependent_case_ids_on_phone
         logger.debug("extension_dependencies: {}".format(extension_dependencies))
+        logger.debug("extension_dependencies_of_outgoing_indices: {}".format(extension_dependencies_of_outgoing_indices))
         logger.debug("dependent_case_ids_on_phone: {}".format(self.dependent_case_ids_on_phone))
         logger.debug("candidates_to_remove: {}".format(candidates_to_remove))
         dependencies_not_to_remove = dependencies - self.dependent_case_ids_on_phone
@@ -649,6 +650,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
 
             self.dependent_case_ids_on_phone.remove(to_remove)
 
+        logger.debug("dependencies not to remove: {}".format(dependencies_not_to_remove))
         if not dependencies_not_to_remove:
             # this case's entire relevancy chain is in dependent cases
             # this means they can all now be removed.
@@ -664,9 +666,20 @@ class SimplifiedSyncLog(AbstractSyncLog):
             # we have some possible candidates for removal. we should check each of them.
             candidates_to_remove.remove(case_id)  # except ourself
             for candidate in candidates_to_remove:
-                candidate_dependencies = self.index_tree.get_all_cases_that_depend_on_case(
+                candidate_child_dependencies = self.index_tree.get_all_cases_that_depend_on_case(
                     candidate, cached_map=reverse_index_map
                 )
+                candidate_extension_dependencies = self.extension_index_tree.get_all_cases_that_depend_on_case(
+                    candidate,
+                    cached_map=reverse_extension_index_map
+                )
+                candidate_extension_dependencies_of_outgoing_indices = (self.extension_index_tree.
+                                                                        get_dependencies_of_outgoing_indices(candidate))
+
+                candidate_dependencies = (candidate_child_dependencies |
+                                          candidate_extension_dependencies |
+                                          candidate_extension_dependencies_of_outgoing_indices)
+
                 if not candidate_dependencies - self.dependent_case_ids_on_phone:
                     _remove_case(candidate)
 

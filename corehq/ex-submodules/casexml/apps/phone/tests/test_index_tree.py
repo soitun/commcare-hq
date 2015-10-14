@@ -224,8 +224,7 @@ class PruningTest(SimpleTestCase):
 class ExtensionCasesPruningTest(SimpleTestCase):
 
     def test_prune_host(self, ):
-        """
-        Pruning host removes the extension
+        """Pruning host removes the extension
         """
         [host_id, extension_id] = all_ids = ['host', 'extension']
         extension_tree = IndexTree(indices={
@@ -242,8 +241,7 @@ class ExtensionCasesPruningTest(SimpleTestCase):
         self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_extension(self, ):
-        """
-        Pruning extension removes host
+        """Pruning extension removes host
         """
         [host_id, extension_id] = all_ids = ['host', 'extension']
         extension_tree = IndexTree(indices={
@@ -260,8 +258,7 @@ class ExtensionCasesPruningTest(SimpleTestCase):
         self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_host_extension_has_extension(self):
-        """
-        Pruning host when extension has an extension removes both
+        """Pruning host when extension has an extension removes both
         """
         [host_id, extension_id, extension_extension_id] = all_ids = ['host', 'extension', 'extension_extension']
         extension_tree = IndexTree(indices={
@@ -279,8 +276,7 @@ class ExtensionCasesPruningTest(SimpleTestCase):
         self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_host_has_multiple_extensions(self):
-        """
-        Pruning host with multiple extensions should remove all extensions
+        """Pruning host with multiple extensions should remove all extensions
         """
         [host_id, extension_id, extension_id_2] = all_ids = ['host', 'extension', 'extension_2']
         extension_tree = IndexTree(indices={
@@ -298,8 +294,7 @@ class ExtensionCasesPruningTest(SimpleTestCase):
         self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_extension_host_has_multiple_extensions(self):
-        """
-        Pruning an extension should remove host and its other extensions
+        """Pruning an extension should remove host and its other extensions
         """
         [host_id, extension_id, extension_id_2] = all_ids = ['host', 'extension', 'extension_2']
         extension_tree = IndexTree(indices={
@@ -315,6 +310,61 @@ class ExtensionCasesPruningTest(SimpleTestCase):
         self.assertFalse(extension_id_2 in sync_log.case_ids_on_phone)
         self.assertFalse(host_id in sync_log.case_ids_on_phone)
         self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
+
+    def test_prune_extension_non_dependent_host(self):
+        """Pruning an extension should not remove the host or itself if the host is directly owned
+        """
+        [host_id, extension_id] = all_ids = ['host', 'extension']
+        extension_tree = IndexTree(indices={
+            extension_id: convert_list_to_dict([host_id]),
+        })
+        sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
+                                     case_ids_on_phone=set(all_ids))
+        sync_log.prune_case(extension_id)
+        self.assertTrue(extension_id in sync_log.case_ids_on_phone)
+        self.assertTrue(host_id in sync_log.case_ids_on_phone)
+
+    def test_prune_child_of_extension(self):
+        """Pruning child of extension should remove extension and host
+        """
+        [host_id, extension_id, child_id] = all_ids = ['host', 'extension', 'child']
+        child_tree = IndexTree(indices={
+            child_id: convert_list_to_dict([extension_id]),
+        })
+        extension_tree = IndexTree(indices={
+            extension_id: convert_list_to_dict([host_id]),
+        })
+        sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
+                                     index_tree=child_tree,
+                                     dependent_case_ids_on_phone=set([host_id, extension_id]),
+                                     case_ids_on_phone=set(all_ids))
+
+        sync_log.prune_case(child_id)
+        self.assertFalse(extension_id in sync_log.case_ids_on_phone)
+        self.assertFalse(child_id in sync_log.case_ids_on_phone)
+        self.assertFalse(host_id in sync_log.case_ids_on_phone)
+
+    def test_prune_extension_host_is_parent(self):
+        """Pruning an extension should not prune the host or the extension if the host is a depenency for a child
+        """
+        self.skipTest("Will this ever happen?")
+        # This would only happen if the extension was delegated, and the child was owned by the same owner
+        [host_id, extension_id, child_id] = all_ids = ['host', 'extension', 'child']
+        child_tree = IndexTree(indices={
+            child_id: convert_list_to_dict([host_id]),
+        })
+        extension_tree = IndexTree(indices={
+            extension_id: convert_list_to_dict([host_id]),
+        })
+        sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
+                                     index_tree=child_tree,
+                                     dependent_case_ids_on_phone=set([host_id]),
+                                     case_ids_on_phone=set(all_ids))
+
+        sync_log.prune_case(extension_id)
+        self.assertTrue(extension_id in sync_log.case_ids_on_phone)
+        self.assertTrue(child_id in sync_log.case_ids_on_phone)
+        self.assertTrue(host_id in sync_log.case_ids_on_phone)
 
 
 def convert_list_to_dict(a_list):
