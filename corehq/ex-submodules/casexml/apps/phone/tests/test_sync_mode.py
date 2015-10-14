@@ -89,8 +89,7 @@ class SyncBaseTest(TestCase):
     def _checkLists(self, l1, l2, msg=None):
         self.assertEqual(set(l1), set(l2), msg)
 
-    def _testUpdate(self, sync_log_or_id, case_id_map, dependent_case_id_map=None,
-                    extension_case_ids=None,):
+    def _testUpdate(self, sync_log_or_id, case_id_map, dependent_case_id_map=None):
         dependent_case_id_map = dependent_case_id_map or {}
         if isinstance(sync_log_or_id, AbstractSyncLog):
             sync_log = sync_log_or_id
@@ -103,7 +102,6 @@ class SyncBaseTest(TestCase):
             all_ids.update(dependent_case_id_map)
             self.assertEqual(set(all_ids), sync_log.case_ids_on_phone)
             self.assertEqual(set(dependent_case_id_map.keys()), sync_log.dependent_case_ids_on_phone)
-            self.assertEqual(set(extension_case_ids), sync_log.extension_case_ids_on_phone)
             for case_id, indices in case_id_map.items():
                 if indices:
                     index_ids = [i.referenced_id for i in case_id_map[case_id]]
@@ -695,61 +693,6 @@ class SyncTokenUpdateTest(SyncBaseTest):
         # before this test was written, the case stayed on the sync log even though it was closed
         self.assertFalse(sync_log.phone_is_holding_case(case_id))
 
-
-class ExtensionCasesSyncTest(SyncBaseTest):
-
-    @run_with_cleanliness_restore
-    def test_open_extension_case_syncs_parent(self):
-        """Open extension case pulls in open parent
-        'Sub pulls in super'
-        """
-        case_type = 'case'
-        host = CaseStructure(case_id=uuid.uuid4().hex,
-                             attrs={'create': True, 'owner_id': OTHER_USER_ID})
-        extension = CaseStructure(
-            case_id=uuid.uuid4().hex,
-            attrs={'create': True},
-            indices=[CaseIndex(
-                host,
-                identifier='host',
-                relationship='extension',
-                related_type=case_type,
-            )],
-        )
-        index_ref = CommCareCaseIndex(identifier='host',
-                                      referenced_type=case_type,
-                                      referenced_id=host.case_id)
-
-        self.factory.create_or_update_cases([extension])
-        self._testUpdate(self.sync_log._id,
-                         {extension.case_id: [index_ref]},
-                         dependent_case_id_map={host.case_id: []},
-                         extension_case_ids=[extension.case_id])
-
-    @run_with_cleanliness_restore
-    def test_host_with_extension(self):
-        """Open extension. Host pulls in extension
-        'Super pulls in sub if open'
-        """
-        case_type = 'case'
-        host = CaseStructure(case_id='host',
-                             attrs={'create': True})
-        extension = CaseStructure(
-            case_id='extension',
-            attrs={'create': True, 'owner_id': '-'},
-            indices=[CaseIndex(
-                host,
-                identifier='host',
-                relationship='extension',
-                related_type=case_type,
-            )],
-        )
-        self.factory.create_or_update_cases([extension])
-
-        self._testUpdate(self.sync_log._id,
-                         case_id_map={host.case_id: []},
-                         dependent_case_id_map={extension.case_id: []},
-                         extension_case_ids=[extension.case_id])
 
 class ExtensionCasesSyncTrees(SyncBaseTest):
     """Makes sure the extension case trees are propertly updated

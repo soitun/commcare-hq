@@ -556,12 +556,6 @@ class SimplifiedSyncLog(AbstractSyncLog):
     # this allows us to prune it if possible from other actions
     dependent_case_ids_on_phone = SetProperty(unicode)
 
-    # an extension case is on the phone if it is dependent on another case, or if it is directly owned.
-    # if it is dependent on another case, then it will also feature in dependent_case_ids on phone,
-    # if it is directly owned by the user (i.e. it has been delegated to this user), then the
-    # referenced case of that case's extension index will be in dependent_case_ids_on_phone
-    extension_case_ids_on_phone = SetProperty(unicode)
-
     owner_ids_on_phone = SetProperty(unicode)
     index_tree = SchemaProperty(IndexTree)  # child_index_tree
 
@@ -751,7 +745,6 @@ class SimplifiedSyncLog(AbstractSyncLog):
                 self.dependent_case_ids_on_phone.add(index.referenced_id)
 
         def _add_extension_index(index):
-            self.extension_case_ids_on_phone.add(index.case_id)
             self.extension_index_tree.set_index(index.case_id, index.identifier, index.referenced_id)
 
             if index.referenced_id not in self.case_ids_on_phone:

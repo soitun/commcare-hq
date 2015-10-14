@@ -231,7 +231,6 @@ class ExtensionCasesPruningTest(SimpleTestCase):
             extension_id: convert_list_to_dict([host_id]),
         })
         sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
-                                     # extension_case_ids_on_phone=set([extension_id]),
                                      dependent_case_ids_on_phone=set([extension_id]),
                                      case_ids_on_phone=set(all_ids))
 
@@ -248,14 +247,12 @@ class ExtensionCasesPruningTest(SimpleTestCase):
             extension_id: convert_list_to_dict([host_id]),
         })
         sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
-                                     # extension_case_ids_on_phone=set([extension_id]),
                                      dependent_case_ids_on_phone=set([host_id]),
                                      case_ids_on_phone=set(all_ids))
 
         sync_log.prune_case(extension_id)
         self.assertFalse(extension_id in sync_log.case_ids_on_phone)
         self.assertFalse(host_id in sync_log.case_ids_on_phone)
-        self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_host_extension_has_extension(self):
         """Pruning host when extension has an extension removes both
@@ -266,14 +263,12 @@ class ExtensionCasesPruningTest(SimpleTestCase):
             extension_extension_id: convert_list_to_dict([extension_id]),
         })
         sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
-                                     # extension_case_ids_on_phone=set([extension_id]),
                                      dependent_case_ids_on_phone=set([extension_id, extension_extension_id]),
                                      case_ids_on_phone=set(all_ids))
         sync_log.prune_case(host_id)
         self.assertFalse(extension_id in sync_log.case_ids_on_phone)
         self.assertFalse(extension_extension_id in sync_log.case_ids_on_phone)
         self.assertFalse(host_id in sync_log.case_ids_on_phone)
-        self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_host_has_multiple_extensions(self):
         """Pruning host with multiple extensions should remove all extensions
@@ -284,14 +279,12 @@ class ExtensionCasesPruningTest(SimpleTestCase):
             extension_id_2: convert_list_to_dict([host_id]),
         })
         sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
-                                     # extension_case_ids_on_phone=set([extension_id]),
                                      dependent_case_ids_on_phone=set([extension_id, extension_id_2]),
                                      case_ids_on_phone=set(all_ids))
         sync_log.prune_case(host_id)
         self.assertFalse(extension_id in sync_log.case_ids_on_phone)
         self.assertFalse(extension_id_2 in sync_log.case_ids_on_phone)
         self.assertFalse(host_id in sync_log.case_ids_on_phone)
-        self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_extension_host_has_multiple_extensions(self):
         """Pruning an extension should remove host and its other extensions
@@ -302,14 +295,12 @@ class ExtensionCasesPruningTest(SimpleTestCase):
             extension_id_2: convert_list_to_dict([host_id]),
         })
         sync_log = SimplifiedSyncLog(extension_index_tree=extension_tree,
-                                     # extension_case_ids_on_phone=set([extension_id]),
                                      dependent_case_ids_on_phone=set([host_id, extension_id_2]),
                                      case_ids_on_phone=set(all_ids))
         sync_log.prune_case(extension_id)
         self.assertFalse(extension_id in sync_log.case_ids_on_phone)
         self.assertFalse(extension_id_2 in sync_log.case_ids_on_phone)
         self.assertFalse(host_id in sync_log.case_ids_on_phone)
-        self.assertFalse(extension_id in sync_log.extension_case_ids_on_phone)
 
     def test_prune_extension_non_dependent_host(self):
         """Pruning an extension should not remove the host or itself if the host is directly owned
