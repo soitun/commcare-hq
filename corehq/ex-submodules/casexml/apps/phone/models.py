@@ -497,6 +497,18 @@ class IndexTree(DocumentSchema):
         _recursive_call(case_id, all_cases, cached_map)
         return all_cases
 
+    def get_dependencies_of_outgoing_indices(self, case_id):
+        """
+        Used in extension trees to find extensions of dependencies
+        """
+        all_cases = set()
+        outgoing_indices = set(self.indices.get(case_id, {}).values())
+        for outgoing_index in outgoing_indices:
+            dependencies = self.get_all_cases_that_depend_on_case(outgoing_index)
+            all_cases.update(dependencies)
+
+        return all_cases
+
     def delete_index(self, from_case_id, index_name):
         prior_ids = self.indices.pop(from_case_id, {})
         prior_ids.pop(index_name, None)
@@ -551,7 +563,10 @@ class SimplifiedSyncLog(AbstractSyncLog):
     extension_case_ids_on_phone = SetProperty(unicode)
 
     owner_ids_on_phone = SetProperty(unicode)
-    index_tree = SchemaProperty(IndexTree)
+    index_tree = SchemaProperty(IndexTree)  # child_index_tree
+
+    # The extension index tree keeps track of all extension indices
+    extension_index_tree = SchemaProperty(IndexTree)
 
     def save(self, *args, **kwargs):
         # force doc type to SyncLog to avoid changing the couch view.
@@ -577,10 +592,22 @@ class SimplifiedSyncLog(AbstractSyncLog):
         logger.debug('pruning: {}'.format(case_id))
         self.dependent_case_ids_on_phone.add(case_id)
         reverse_index_map = _reverse_index_map(self.index_tree.indices)
-        dependencies = self.index_tree.get_all_cases_that_depend_on_case(case_id, cached_map=reverse_index_map)
+        reverse_extension_index_map = _reverse_index_map(self.extension_index_tree.indices)
+        child_dependencies = self.index_tree.get_all_cases_that_depend_on_case(case_id,
+                                                                               cached_map=reverse_index_map)
+        extension_dependencies = self.extension_index_tree.get_all_cases_that_depend_on_case(
+            case_id,
+            cached_map=reverse_extension_index_map
+        )
+        extension_dependencies_of_outgoing_indices = (self.extension_index_tree.
+                                                      get_dependencies_of_outgoing_indices(case_id))
+        dependencies = child_dependencies | extension_dependencies | extension_dependencies_of_outgoing_indices
         # we can only potentially remove a case if it's already in dependent case ids
         # and therefore not directly owned
         candidates_to_remove = dependencies & self.dependent_case_ids_on_phone
+        logger.debug("extension_dependencies: {}".format(extension_dependencies))
+        logger.debug("dependent_case_ids_on_phone: {}".format(self.dependent_case_ids_on_phone))
+        logger.debug("candidates_to_remove: {}".format(candidates_to_remove))
         dependencies_not_to_remove = dependencies - self.dependent_case_ids_on_phone
 
         def _remove_case(to_remove):
