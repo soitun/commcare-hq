@@ -616,6 +616,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
             logger.debug('removing: {}'.format(to_remove))
             assert to_remove in self.dependent_case_ids_on_phone
             indices = self.index_tree.indices.pop(to_remove, {})
+            indices.update(self.extension_index_tree.indices.pop(to_remove, {}))
             if to_remove != case_id:
                 # if the case had indexes they better also be in our removal list (except for ourselves)
                 for index in indices.values():
