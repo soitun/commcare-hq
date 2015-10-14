@@ -847,6 +847,90 @@ class ExtensionCasesSyncTrees(SyncBaseTest):
         self.assertDictEqual(sync_log.index_tree.indices, {})
         self.assertDictEqual(sync_log.extension_index_tree.indices, expected_extension_tree)
 
+    @run_with_cleanliness_restore
+    def test_create_extension_then_delegate(self):
+        """A delegated extension should still remain on the phone with the host
+        """
+        case_type = 'case'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                host,
+                identifier='host',
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+        self.factory.create_or_update_case(extension)
+
+        delegated_extension = CaseStructure(case_id=extension.case_id, attrs={'owner_id': 'me'})
+        self.factory.create_or_update_case(delegated_extension)
+
+        expected_extension_tree = {extension.case_id: {'host': host.case_id}}
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertDictEqual(sync_log.extension_index_tree.indices, expected_extension_tree)
+        self.assertEqual(sync_log.cases_on_phone, set([host.case_id, extension.case_id]))
+
+    @run_with_cleanliness_restore
+    def test_create_delegated_extension(self):
+        """An extension that is created with a different owner id is considered a non-live update.
+        Only the host will remain on the phone.
+        """
+        # TODO: I don't think this is necessarily desired behaviour, but is the way it is
+        # currently implemented in the app builder
+        case_type = 'case'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': 'foobar'},
+            indices=[CaseIndex(
+                host,
+                identifier='host',
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+        self.factory.create_or_update_case(extension)
+
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertDictEqual(sync_log.extension_index_tree.indices, {})
+        self.assertEqual(sync_log.case_ids_on_phone, set([host.case_id]))
+
+    @run_with_cleanliness_restore
+    def test_close_host(self):
+        """closing a host should update the appropriate trees
+        """
+        case_type = 'case'
+        index_identifier = 'idx'
+        host = CaseStructure(case_id='host',
+                             attrs={'create': True})
+        extension = CaseStructure(
+            case_id='extension',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                host,
+                identifier=index_identifier,
+                relationship='extension',
+                related_type=case_type,
+            )],
+        )
+
+        self.factory.create_or_update_cases([extension])
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertDictEqual(sync_log.extension_index_tree.indices,
+                             {extension.case_id: {index_identifier: host.case_id}})
+
+        closed_host = CaseStructure(case_id=host.case_id, attrs={'close': True})
+        self.factory.create_or_update_case(closed_host)
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertDictEqual(sync_log.extension_index_tree.indices, {})
+        self.assertEqual(sync_log.dependent_case_ids_on_phone, set([]))
+        self.assertEqual(sync_log.case_ids_on_phone, set([]))
+
 
 class ChangingOwnershipTest(SyncBaseTest):
 
