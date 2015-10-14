@@ -815,7 +815,7 @@ class ExtensionCasesSyncTrees(SyncBaseTest):
         expected_extension_tree = {extension.case_id: {'host': host.case_id}}
         sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
         self.assertDictEqual(sync_log.extension_index_tree.indices, expected_extension_tree)
-        self.assertEqual(sync_log.cases_on_phone, set([host.case_id, extension.case_id]))
+        self.assertEqual(sync_log.case_ids_on_phone, set([host.case_id, extension.case_id]))
 
     @run_with_cleanliness_restore
     def test_create_delegated_extension(self):

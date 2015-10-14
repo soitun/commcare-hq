@@ -733,7 +733,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
                             )
                         else:
                             case_update.indices_to_delete.append(
-                                ShortIndex(case._id, index.identifier, None)
+                                ShortIndex(case._id, index.identifier, None, None, None)
                             )
                 elif action.action_type == const.CASE_ACTION_CLOSE:
                     case_update.is_closed = True
