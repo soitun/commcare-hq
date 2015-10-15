@@ -3,6 +3,8 @@ from copy import copy
 from functools import partial
 from datetime import datetime
 from casexml.apps.case.models import CommCareCase
+from casexml.apps.case.dbaccessors import get_extension_case_ids
+from casexml.apps.case.const import CASE_INDEX_EXTENSION_OWNER_ID
 from casexml.apps.phone.cleanliness import get_case_footprint_info
 from casexml.apps.phone.data_providers.case.load_testing import append_update_to_response
 from casexml.apps.phone.data_providers.case.stock import get_stock_payload
@@ -15,6 +17,9 @@ from corehq.dbaccessors.couchapps.cases_by_server_date.by_owner_server_modified_
 from corehq.dbaccessors.couchapps.cases_by_server_date.by_server_modified_on import get_last_modified_dates
 from dimagi.utils.couch.bulk import get_docs
 from dimagi.utils.decorators.memoized import memoized
+import logging
+
+logger = logging.getLogger("phone.models")
 
 
 def get_case_payload(restore_state):
@@ -64,7 +69,8 @@ class CleanOwnerCaseSyncOperation(object):
 
         all_maybe_syncing = copy(case_ids_to_sync)
         all_synced = set()
-        all_indices = defaultdict(set)
+        child_indices = defaultdict(set)
+        extension_indices = defaultdict(set)
         all_dependencies_syncing = set()
         while case_ids_to_sync:
             ids = pop_ids(case_ids_to_sync, chunk_size)
@@ -73,23 +79,37 @@ class CleanOwnerCaseSyncOperation(object):
                 partial(case_needs_to_sync, last_sync_log=self.restore_state.last_sync_log),
                 [CommCareCase.wrap(doc) for doc in get_docs(CommCareCase.get_db(), ids)]
             )
+
+            # check whether any of the cases on the phone are already on the
+            # phone, if so, we don't need to update them
             updates = get_case_sync_updates(
                 self.restore_state.domain, case_batch, self.restore_state.last_sync_log
             )
             for update in updates:
                 case = update.case
                 all_synced.add(case._id)
+
+                # For loadtesting:
+                # element = get_case_element(update.case, update.required_updates, restore_state.version)
+                # response.append(element)
+                # get_case_element generates case blocks to send down. it also includes outgoing indices
                 append_update_to_response(response, update, self.restore_state)
 
                 # update the indices in the new sync log
                 if case.indices:
-                    all_indices[case._id] = {index.identifier: index.referenced_id for index in case.indices}
                     # and double check footprint for non-live cases
                     for index in case.indices:
+                        if index.relationship == 'extension':
+                            extension_indices[case._id] = {index.identifier: index.referenced_id}
+                        else:
+                            child_indices[case._id] = {index.identifier: index.referenced_id}
                         if index.referenced_id not in all_maybe_syncing:
                             case_ids_to_sync.add(index.referenced_id)
 
                 if not _is_live(case, self.restore_state):
+                    # TODO: This is somewhat misleading? This is actually adding
+                    # all closed or unowned cases to dependencies so that we can
+                    # call 'purge' on them
                     all_dependencies_syncing.add(case._id)
 
             # commtrack ledger sections for this batch
@@ -107,7 +127,8 @@ class CleanOwnerCaseSyncOperation(object):
             self.restore_state.current_sync_log.to_json()
         )
         self.restore_state.current_sync_log.log_format = LOG_FORMAT_SIMPLIFIED
-        index_tree = IndexTree(indices=all_indices)
+        index_tree = IndexTree(indices=child_indices)
+        extension_index_tree = IndexTree(indices=extension_indices)
         case_ids_on_phone = all_synced
         primary_cases_syncing = all_synced - all_dependencies_syncing
         if not self.restore_state.is_initial:
@@ -122,6 +143,7 @@ class CleanOwnerCaseSyncOperation(object):
         self.restore_state.current_sync_log.case_ids_on_phone = case_ids_on_phone
         self.restore_state.current_sync_log.dependent_case_ids_on_phone = all_dependencies_syncing
         self.restore_state.current_sync_log.index_tree = index_tree
+        self.restore_state.current_sync_log.extension_index_tree = extension_index_tree
 
         _move_no_longer_owned_cases_to_dependent_list_if_necessary(self.restore_state)
         # this is a shortcut to prune closed cases we just sent down before saving the sync log
@@ -129,10 +151,13 @@ class CleanOwnerCaseSyncOperation(object):
         return response
 
     def get_case_ids_for_owner(self, owner_id):
+        print "CLEAN RESTORE: ", self.is_clean(owner_id)
         if self.is_clean(owner_id):
             if self.restore_state.is_initial:
-                # for a clean owner's initial sync the base set is just the open ids
-                return set(get_open_case_ids(self.restore_state.domain, owner_id))
+                # for a clean owner's initial sync the base set is just the open ids and their extensions
+                open_case_ids = set(get_open_case_ids(self.restore_state.domain, owner_id))
+                extension_case_ids = set(get_extension_case_ids(self.restore_state.domain, open_case_ids))
+                return open_case_ids | extension_case_ids
             else:
                 # for a clean owner's steady state sync, the base set is anything modified since last sync
                 return set(get_case_ids_modified_with_owner_since(
@@ -149,7 +174,8 @@ def _is_live(case, restore_state):
     Given a case and a restore state object, return whether or not the case is "live"
     (direclty owned by this sync and open), or "dependent" (needed by another case)
     """
-    return not case.closed and get_owner_id(case) in restore_state.owner_ids
+    owner_id = get_owner_id(case)
+    return not case.closed and (owner_id in restore_state.owner_ids or owner_id == CASE_INDEX_EXTENSION_OWNER_ID)
 
 
 def filter_cases_modified_since(domain, case_ids, reference_date):
