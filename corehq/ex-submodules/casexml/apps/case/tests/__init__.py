@@ -22,6 +22,7 @@ try:
     from .test_v2_parsing import *
     from .test_domains import *
     from .test_strict_datetimes import *
+    from .test_extension_indexes import *
 except ImportError, e:
     # for some reason the test harness squashes these so log them here for clarity
     # otherwise debugging is a pain
