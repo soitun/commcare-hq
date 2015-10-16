@@ -39,8 +39,12 @@ def test_generator(test_name):
 
 class TestSequenceMeta(type):
     def __new__(mcs, name, bases, dict):
-        for test_name in [test['name'] for test in
-                          get_test_file_json('case_relationship_tests')]:
+        test_file_json = get_test_file_json('case_relationship_tests')
+        run_single_tests = filter(lambda t: t.get('only', False), test_file_json)
+        if run_single_tests:
+            test_file_json = run_single_tests
+
+        for test_name in [test['name'] for test in test_file_json]:
             # Create a new testcase that the test runner is able to find
             dict["test_%s" % re.sub("\s", "_", test_name)] = test_generator(test_name)
 
@@ -58,6 +62,7 @@ class IndexTreeTest(TestCase):
         "extensions": [ A list of ordered pairs e.g. ["a","b"] means "a creates an extension index pointing to b"],
         "closed": A list of the closed cases,
         "outcome": When syncing all the cases, which cases should be sent to the phone,
+        "only": For debugging purposes, run a single test by adding 'only': true to those tests,
     }
     """
     __metaclass__ = TestSequenceMeta
