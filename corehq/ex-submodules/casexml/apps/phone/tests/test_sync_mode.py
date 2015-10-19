@@ -694,7 +694,7 @@ class SyncTokenUpdateTest(SyncBaseTest):
         self.assertFalse(sync_log.phone_is_holding_case(case_id))
 
 
-class ExtensionCasesSyncTrees(SyncBaseTest):
+class ExtensionCasesSync(SyncBaseTest):
     """Makes sure the extension case trees are propertly updated
     """
 
@@ -819,11 +819,6 @@ class ExtensionCasesSyncTrees(SyncBaseTest):
 
     @run_with_cleanliness_restore
     def test_create_delegated_extension(self):
-        """An extension that is created with a different owner id is considered a non-live update.
-        Only the host will remain on the phone.
-        """
-        # TODO: I don't think this is necessarily desired behaviour, but is the way it is
-        # currently implemented in the app builder
         case_type = 'case'
         host = CaseStructure(case_id='host',
                              attrs={'create': True})
@@ -839,9 +834,10 @@ class ExtensionCasesSyncTrees(SyncBaseTest):
         )
         self.factory.create_or_update_case(extension)
 
+        expected_extension_tree = {extension.case_id: {'host': host.case_id}}
         sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
-        self.assertDictEqual(sync_log.extension_index_tree.indices, {})
-        self.assertEqual(sync_log.case_ids_on_phone, set([host.case_id]))
+        self.assertDictEqual(sync_log.extension_index_tree.indices, expected_extension_tree)
+        self.assertEqual(sync_log.case_ids_on_phone, set([host.case_id, extension.case_id]))
 
     @run_with_cleanliness_restore
     def test_close_host(self):
@@ -873,6 +869,68 @@ class ExtensionCasesSyncTrees(SyncBaseTest):
         self.assertDictEqual(sync_log.extension_index_tree.indices, {})
         self.assertEqual(sync_log.dependent_case_ids_on_phone, set([]))
         self.assertEqual(sync_log.case_ids_on_phone, set([]))
+
+    @run_with_cleanliness_restore
+    def test_long_chain_with_children(self):
+        """
+                  +----+
+                  | E1 |
+                  +--^-+
+                     |e
+        +---+     +--+-+
+        |O  +--c->| C  |
+        +---+     +--^-+
+       (owned)       |e
+                  +--+-+
+                  | E2 |
+                  +----+
+        """
+        case_type = 'case'
+
+        E1 = CaseStructure(
+            case_id='extension_1',
+            attrs={'create': True, 'owner_id': '-'},
+        )
+
+        C = CaseStructure(
+            case_id='child',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                E1,
+                identifier='extension_1',
+                relationship='extension',
+                related_type=case_type,
+            )]
+        )
+
+        O = CaseStructure(
+            case_id='owned',
+            attrs={'create': True},
+            indices=[CaseIndex(
+                C,
+                identifier='child',
+                relationship='child',
+                related_type=case_type,
+            )]
+        )
+        E2 = CaseStructure(
+            case_id='extension_2',
+            attrs={'create': True, 'owner_id': '-'},
+            indices=[CaseIndex(
+                E1,
+                identifier='extension',
+                relationship='extension',
+                related_type=case_type,
+            )]
+        )
+        self.factory.create_or_update_cases([O, E2])
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+
+        expected_dependent_ids = set([C.case_id, E1.case_id, E2.case_id])
+        self.assertEqual(sync_log.dependent_case_ids_on_phone, expected_dependent_ids)
+
+        all_ids = set([E1.case_id, E2.case_id, O.case_id, C.case_id])
+        self.assertEqual(sync_log.case_ids_on_phone, all_ids)
 
 
 class ChangingOwnershipTest(SyncBaseTest):
