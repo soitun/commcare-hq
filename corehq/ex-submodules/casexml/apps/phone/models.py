@@ -758,11 +758,12 @@ class SimplifiedSyncLog(AbstractSyncLog):
 
         def _add_extension_index(index):
             self.extension_index_tree.set_index(index.case_id, index.identifier, index.referenced_id)
-
             if index.referenced_id not in self.case_ids_on_phone:
                 self.case_ids_on_phone.add(index.referenced_id)
-            if index.owner_id == const.CASE_INDEX_EXTENSION_OWNER_ID:
-                self.dependent_case_ids_on_phone.add(index.case_id)
+                self.dependent_case_ids_on_phone.add(index.referenced_id)
+
+            self.dependent_case_ids_on_phone.add(index.case_id)
+
 
         def _is_live(case_update, owner_ids):
             if case_update.is_closed:
@@ -770,9 +771,13 @@ class SimplifiedSyncLog(AbstractSyncLog):
             elif case_update.final_owner_id is None:
                 # we likely didn't touch owner_id so assume it was previously live and still is
                 return True
+            elif filter(lambda index: index.relationship == const.CASE_INDEX_EXTENSION,  case_update.indices_to_add):
+                # if the case we are adding is open, and it is an extension,
+                # then we are live (e.g when owner of extension case is
+                # immediately delagated)
+                return True
             else:
-                return (case_update.final_owner_id in owner_ids
-                        or case_update.final_owner_id == const.CASE_INDEX_EXTENSION_OWNER_ID)
+                return (case_update.final_owner_id in owner_ids)
 
         non_live_updates = []
         for case in case_list:
