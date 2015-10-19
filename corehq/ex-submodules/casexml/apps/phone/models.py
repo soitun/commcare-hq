@@ -626,6 +626,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
         dependencies_not_to_remove = dependencies - self.dependent_case_ids_on_phone
 
         logger.debug("dependent_case_ids_on_phone: {}".format(self.dependent_case_ids_on_phone))
+        logger.debug("calculated dependencies: {}".format(dependencies))
         logger.debug("candidates_to_remove: {}".format(candidates_to_remove))
         logger.debug("dependencies not to remove: {}".format(dependencies_not_to_remove))
 
@@ -664,7 +665,6 @@ class SimplifiedSyncLog(AbstractSyncLog):
 
             self.dependent_case_ids_on_phone.remove(to_remove)
 
-        logger.debug("dependencies not to remove: {}".format(dependencies_not_to_remove))
         if not dependencies_not_to_remove:
             # this case's entire relevancy chain is in dependent cases
             # this means they can all now be removed.
