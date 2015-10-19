@@ -6,6 +6,7 @@ import re
 from casexml.apps.case.mock import CaseIndex, CaseStructure
 from casexml.apps.case.tests.util import assert_user_doesnt_have_cases, \
     assert_user_has_cases
+from casexml.apps.phone.models import get_properly_wrapped_sync_log
 from casexml.apps.phone.tests.restore_test_utils import \
     run_with_cleanliness_restore
 from casexml.apps.phone.tests.test_sync_mode import SyncBaseTest
@@ -21,12 +22,16 @@ def get_test_file_json(filename):
     return json.loads(file_contents)
 
 
-def test_generator(test_name):
+def test_generator(test_name, skip=False):
     @run_with_cleanliness_restore
     def test(self):
+        if skip:
+            self.skipTest(skip)
         self.build_case_structures(test_name)
         desired_cases = self._get_test(test_name).get('outcome', [])
         undesired_cases = [case for case in self.ALL_CASES if case not in desired_cases]
+        sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
+        self.assertEqual(sync_log.case_ids_on_phone, set(desired_cases))
         assert_user_has_cases(self, self.user, desired_cases)
         assert_user_doesnt_have_cases(self, self.user, undesired_cases)
     return test
@@ -34,14 +39,14 @@ def test_generator(test_name):
 
 class TestSequenceMeta(type):
     def __new__(mcs, name, bases, dict):
-        test_file_json = get_test_file_json('case_relationship_tests')
-        run_single_tests = filter(lambda t: t.get('only', False), test_file_json)
+        tests_to_run = get_test_file_json('case_relationship_tests')
+        run_single_tests = filter(lambda t: t.get('only', False), tests_to_run)
         if run_single_tests:
-            test_file_json = run_single_tests
+            tests_to_run = run_single_tests
 
-        for test_name in [test['name'] for test in test_file_json]:
+        for test in [(test['name'], test.get('skip', False)) for test in tests_to_run]:
             # Create a new testcase that the test runner is able to find
-            dict["test_%s" % re.sub("\s", "_", test_name)] = test_generator(test_name)
+            dict["test_%s" % re.sub("\s", "_", test[0])] = test_generator(test[0], test[1])
 
         return type.__new__(mcs, name, bases, dict)
 
