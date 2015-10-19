@@ -107,9 +107,7 @@ class CleanOwnerCaseSyncOperation(object):
                             case_ids_to_sync.add(index.referenced_id)
 
                 if not _is_live(case, self.restore_state):
-                    # TODO: This is somewhat misleading? This is actually adding
-                    # all closed or unowned cases to dependencies so that we can
-                    # call 'purge' on them
+                    logger.debug("case is not live: {}".format(case._id))
                     all_dependencies_syncing.add(case._id)
 
             # commtrack ledger sections for this batch
