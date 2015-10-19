@@ -694,7 +694,7 @@ class SyncTokenUpdateTest(SyncBaseTest):
         self.assertFalse(sync_log.phone_is_holding_case(case_id))
 
 
-class ExtensionCasesSync(SyncBaseTest):
+class ExtensionCasesSyncTokenUpdates(SyncBaseTest):
     """Makes sure the extension case trees are propertly updated
     """
 
@@ -815,7 +815,8 @@ class ExtensionCasesSync(SyncBaseTest):
         expected_extension_tree = {extension.case_id: {'host': host.case_id}}
         sync_log = get_properly_wrapped_sync_log(self.sync_log._id)
         self.assertDictEqual(sync_log.extension_index_tree.indices, expected_extension_tree)
-        self.assertEqual(sync_log.case_ids_on_phone, set([host.case_id, extension.case_id]))
+        self.assertEqual(sync_log.dependent_case_ids_on_phone, set([extension.case_id]))
+        self.assertEqual(sync_log.case_ids_on_phone, set([extension.case_id, host.case_id]))
 
     @run_with_cleanliness_restore
     def test_create_delegated_extension(self):
