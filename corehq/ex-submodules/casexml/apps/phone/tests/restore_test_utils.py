@@ -73,7 +73,6 @@ run_with_cleanliness_restore = functools.partial(
         RunConfig(
             settings={
                 'TESTS_SHOULD_USE_CLEAN_RESTORE': True,
-                'TESTS_SHOULD_TRACK_CLEANLINESS': True,
             },
             pre_run=lambda *args, **kwargs: args[0].setUp()
         ),
