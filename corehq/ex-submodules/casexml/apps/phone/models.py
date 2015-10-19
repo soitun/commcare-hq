@@ -818,6 +818,7 @@ class SimplifiedSyncLog(AbstractSyncLog):
                         _add_child_index(index)
                     for index in case_update.indices_to_delete:
                         self.index_tree.delete_index(index.case_id, index.identifier)
+                        self.extension_index_tree.delete_index(index.case_id, index.identifier)
                 made_changes = True
 
         logger.debug('case ids after update: {}'.format(', '.join(self.case_ids_on_phone)))
