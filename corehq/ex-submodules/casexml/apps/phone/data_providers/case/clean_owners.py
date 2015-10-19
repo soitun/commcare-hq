@@ -155,9 +155,13 @@ class CleanOwnerCaseSyncOperation(object):
         if self.is_clean(owner_id):
             if self.restore_state.is_initial:
                 # for a clean owner's initial sync the base set is just the open ids and their extensions
-                open_case_ids = set(get_open_case_ids(self.restore_state.domain, owner_id))
-                extension_case_ids = set(get_extension_case_ids(self.restore_state.domain, open_case_ids))
-                return open_case_ids | extension_case_ids
+                all_case_ids = set(get_open_case_ids(self.restore_state.domain, owner_id))
+                new_case_ids = set(all_case_ids)
+                while new_case_ids:
+                    all_case_ids = all_case_ids | new_case_ids
+                    extension_case_ids = set(get_extension_case_ids(self.restore_state.domain, new_case_ids))
+                    new_case_ids = extension_case_ids - all_case_ids
+                return all_case_ids
             else:
                 # for a clean owner's steady state sync, the base set is anything modified since last sync
                 return set(get_case_ids_modified_with_owner_since(
@@ -175,7 +179,7 @@ def _is_live(case, restore_state):
     (direclty owned by this sync and open), or "dependent" (needed by another case)
     """
     owner_id = get_owner_id(case)
-    return not case.closed and (owner_id in restore_state.owner_ids or owner_id == CASE_INDEX_EXTENSION_OWNER_ID)
+    return not case.closed and (owner_id in restore_state.owner_ids)
 
 
 def filter_cases_modified_since(domain, case_ids, reference_date):
