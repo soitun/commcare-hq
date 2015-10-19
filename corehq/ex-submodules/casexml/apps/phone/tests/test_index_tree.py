@@ -23,6 +23,28 @@ class TestExtendedFootprint(SimpleTestCase):
         cases = tree.get_all_cases_that_depend_on_case(grandparent_id)
         self.assertEqual(cases, set(all_cases))
 
+    def test_simple_extension(self):
+        [host_id, extension_id] = all_ids = ['host', 'extension']
+        extension_tree = IndexTree(indices={
+            extension_id: convert_list_to_dict([host_id]),
+        })
+        cases = extension_tree.get_all_extension_dependencies(host_id)
+        self.assertEqual(cases, set(all_ids))
+
+    def test_extension_long_chain(self):
+        [host_id, extension_id, extension_id_2, extension_id_3] = all_ids = [
+            'host', 'extension', 'extension_2', 'extension_3']
+
+        extension_tree = IndexTree(indices={
+            extension_id: convert_list_to_dict([host_id]),
+            extension_id_2: convert_list_to_dict([extension_id]),
+            extension_id_3: convert_list_to_dict([extension_id_2]),
+        })
+        cases = extension_tree.get_all_extension_dependencies(host_id)
+        self.assertEqual(set(all_ids), cases)
+        cases = extension_tree.get_all_extension_dependencies(extension_id_2)
+        self.assertEqual(set(all_ids), cases)
+
 
 class PruningTest(SimpleTestCase):
 

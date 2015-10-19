@@ -497,16 +497,27 @@ class IndexTree(DocumentSchema):
         _recursive_call(case_id, all_cases, cached_map)
         return all_cases
 
-    def get_dependencies_of_outgoing_indices(self, case_id):
-        """
-        Used in extension trees to find extensions of dependencies
-        """
-        all_cases = set()
-        outgoing_indices = set(self.indices.get(case_id, {}).values())
-        for outgoing_index in outgoing_indices:
-            dependencies = self.get_all_cases_that_depend_on_case(outgoing_index)
-            all_cases.update(dependencies)
+    def get_all_extension_dependencies(self, case_id, cached_map=None):
+        """Returns the whole dependency tree for extension indices
 
+        Traverses the tree in both directions, and adds each case touched from outgoing and incoming indices
+        """
+        def _recursive_call(case_id, all_cases, cached_map):
+            all_cases.add(case_id)
+            for dependent_case in self.get_cases_that_directly_depend_on_case(case_id, cached_map=cached_map):
+                # incoming indices
+                if dependent_case not in all_cases:
+                    all_cases.add(dependent_case)
+                    _recursive_call(dependent_case, all_cases, cached_map)
+            for indexed_case in self.indices.get(case_id, {}).values():
+                # outgoing indices
+                if indexed_case not in all_cases:
+                    all_cases.add(indexed_case)
+                    _recursive_call(indexed_case, all_cases, cached_map)
+
+        all_cases = set()
+        cached_map = cached_map or _reverse_index_map(self.indices)
+        _recursive_call(case_id, all_cases, cached_map)
         return all_cases
 
     def delete_index(self, from_case_id, index_name):
