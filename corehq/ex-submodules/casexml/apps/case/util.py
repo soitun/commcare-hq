@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from collections import defaultdict, namedtuple
+from itertools import izip_longest
 import uuid
 
 from xml.etree import cElementTree as ElementTree
@@ -230,11 +231,42 @@ def get_datetime_case_property_changed(case, case_property_name, value):
 
 
 def get_all_changes_to_case_property(case, case_property_name):
-    case_property_changes = []
     case_transactions = case.actions
-    for transaction in case_transactions:
+    for transaction in sorted(case_transactions, key=lambda t: t.server_date, reverse=True):
         property_changed_info = property_changed_in_action(transaction, case.case_id, case_property_name)
         if property_changed_info:
-            case_property_changes.append(property_changed_info)
+            yield property_changed_info
 
-    return case_property_changes
+
+def get_paged_changes_to_case_property(case, case_property_name, start=1, per_page=1):
+    """Return paged case properties, and last transaction index checked
+    """
+    def grouper(iterable, n, fillvalue=None):
+        "Collect data into fixed-length chunks or blocks"
+        # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx
+        args = [iter(iterable)] * n
+        return izip_longest(fillvalue=fillvalue, *args)
+
+    # return grouper(get_all_changes_to_case_property(case, case_property_name), per_page)
+
+    def iter_transactions(transactions):
+        for i, transaction in enumerate(transactions):
+            property_changed_info = property_changed_in_action(transaction, case.case_id, case_property_name)
+            if property_changed_info:
+                yield property_changed_info, i
+
+    num_actions = len(case.actions)
+    if start > num_actions:
+        return None, 0
+
+    case_transactions = sorted(case.actions, key=lambda t: t.server_date, reverse=True)[start:]
+    infos = []
+    for _ in range(per_page):
+        try:
+            info, last_index = next(iter_transactions(case_transactions))
+            infos.append(info)
+        except StopIteration:
+            last_index = 0
+            break
+
+    return infos, last_index + start

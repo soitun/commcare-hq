@@ -68,7 +68,7 @@ from casexml.apps.case.mock import CaseBlock
 from casexml.apps.case.templatetags.case_tags import case_inline_display
 from casexml.apps.case.xform import extract_case_blocks, get_case_updates
 from casexml.apps.case.xml import V2
-from casexml.apps.case.util import get_all_changes_to_case_property
+from casexml.apps.case.util import get_paged_changes_to_case_property
 from casexml.apps.stock.models import StockTransaction
 from casexml.apps.case.views import get_wrapped_case
 from couchdbkit.exceptions import ResourceNotFound
@@ -1531,18 +1531,20 @@ def case_property_changes(request, domain, case_id, case_property_name):
     case = _get_case_or_404(domain, case_id)
     changes = []
     timezone = get_timezone_for_user(request.couch_user, domain)
-    for change in reversed(get_all_changes_to_case_property(case, case_property_name)):
+    paged_changes, last_trasaction_checked = get_paged_changes_to_case_property(case, case_property_name, 5)
+    for change in paged_changes:
         change_json = form_to_json(domain, change.transaction.form, timezone)
         change_json['new_value'] = change.new_value
         changes.append(change_json)
 
-    context = {
+    return json_response({
         'domain': domain,
         'timezone': timezone.localize(datetime.utcnow()).tzname(),
         'property_name': case_property_name,
         'changes': changes,
-    }
-    return render(request, "case/partials/case_property_modal.html", context)
+        'last_transaction_checked': last_trasaction_checked,
+    })
+    # return render(request, "case/partials/case_property_modal.html", context)
 
 
 @location_safe

@@ -386,7 +386,7 @@ hqDefine("reports/js/case_details", function() {
 
         var $properties = $("#properties");
         if ($properties.length) {
-            $properties.koApplyBindings();
+            // $properties.koApplyBindings();
         }
     });
 });

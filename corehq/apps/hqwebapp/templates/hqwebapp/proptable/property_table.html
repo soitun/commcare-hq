@@ -1,7 +1,7 @@
 <div class="property-table-row">
     {% for table in tables %}
     <div class="property-table-container">
-    
+
         {% if table.name %}
         <div class="table-tab">
             {{ table.name }}
@@ -16,7 +16,12 @@
                     {% if not cell.colspan %}
                     <th title="{{ cell.expr }}">
                         {% if cell.info_url %}
-                            <a href="#" data-bind="openRemoteModal: '{{ cell.info_url }}'">
+                            <a href="#" data-bind="
+                                     click: function(){
+                                         propertyName('{{ cell.expr }}')
+                                     },
+                                     openModal: 'case-properties-modal'">
+                                <!-- openModal: cell.infoModalID -->
                                 {{ cell.name }}
                             </a>
                         {% else %}

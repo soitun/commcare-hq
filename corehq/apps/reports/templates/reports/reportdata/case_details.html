@@ -18,6 +18,14 @@
     <script src="{% static "hqwebapp/js/lib/bootstrap-tab-hashes.js" %}"></script>
     <script src="{% static "hqwebapp/js/lib/jquery.cachedAjax.js" %}"></script>
     <script src="{% static "reports/js/case_details.js" %}"></script>
+    <script src="{% static "case/js/case_property_modal.js" %}"></script>
+{% endblock %}
+
+{% block js-inline %}{{ block.super }}
+    <script>
+     var CasePropertyTable = hqImport('case/js/case_property_table');
+     $("#properties").koApplyBindings(new CasePropertyTable());
+    </script>
 {% endblock %}
 
 {% block page_content %}
@@ -69,6 +77,7 @@
                     <div class="tab-pane active" id="properties">
                         <div class="row-fluid">
                             {% if dynamic_properties %}
+                                {% include "case/partials/case_property_modal.html" %}
                                 {% include "hqwebapp/proptable/property_table.html" with tables=dynamic_properties_as_table %}
                             {% else %}
                         <div class="well clearfix col-lg-10 col-md-12 col-sm-12">
