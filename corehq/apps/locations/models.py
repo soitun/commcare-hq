@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 import uuid
 from datetime import datetime
-from functools import partial
+from functools import partial, wraps
 
 from bulk_update.helper import bulk_update as bulk_update_helper
 
@@ -10,11 +10,12 @@ from django.db import models, transaction
 import jsonfield
 from corehq.form_processor.interfaces.supply import SupplyInterface
 from corehq.form_processor.exceptions import CaseNotFound
-from corehq.apps.commtrack.const import COMMTRACK_USERNAME
 from corehq.apps.domain.models import Domain
+from corehq.apps.locations.adjacencylist import ALModel, ALManager
+from corehq.apps.locations.cte import CTEQuerySet
 from corehq.apps.products.models import SQLProduct
 from corehq.toggles import LOCATION_TYPE_STOCK_RATES
-from mptt.models import MPTTModel, TreeForeignKey, TreeManager
+from mptt.models import TreeForeignKey
 
 
 class LocationTypeManager(models.Manager):
@@ -280,11 +281,32 @@ class LocationQueriesMixin(object):
                             models.Q(site_code__icontains=user_input)))
 
 
-class LocationQuerySet(LocationQueriesMixin, models.query.QuerySet):
+class LocationQuerySet(LocationQueriesMixin, CTEQuerySet):
     pass
 
 
-class LocationManager(LocationQueriesMixin, TreeManager):
+def location_queryset(func):
+    @wraps(func)
+    def wrapper(self, *args, **kw):
+        result = func(self, *args, **kw)
+        if type(result) == CTEQuerySet:
+            result.__class__ = LocationQuerySet
+        return result
+    return wrapper
+
+
+class LocationManager(LocationQueriesMixin, ALManager):
+
+    @location_queryset
+    def get_ancestors(self, *args, **kw):
+        return super(LocationManager, self).get_ancestors(*args, **kw)
+
+    @location_queryset
+    def get_descendants(self, *args, **kw):
+        return super(LocationManager, self).get_descendants(*args, **kw)
+
+    get_queryset_ancestors = get_ancestors
+    get_queryset_descendants = get_descendants
 
     def get_or_None(self, **kwargs):
         try:
@@ -292,12 +314,8 @@ class LocationManager(LocationQueriesMixin, TreeManager):
         except SQLLocation.DoesNotExist:
             return None
 
-    def _get_base_queryset(self):
-        return LocationQuerySet(self.model, using=self._db)
-
     def get_queryset(self):
-        return (self._get_base_queryset()
-                .order_by(self.tree_id_attr, self.left_attr))  # mptt default
+        return LocationQuerySet(self.model, using=self._db)
 
     def get_from_user_input(self, domain, user_input):
         """
@@ -358,7 +376,7 @@ class OnlyArchivedLocationManager(LocationManager):
         return list(self.accessible_to_user(domain, user).location_ids())
 
 
-class SQLLocation(MPTTModel):
+class SQLLocation(ALModel):
     domain = models.CharField(max_length=255, db_index=True)
     name = models.CharField(max_length=255, null=True)
     location_id = models.CharField(max_length=100, db_index=True, unique=True)
