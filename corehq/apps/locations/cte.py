@@ -110,9 +110,9 @@ class With(object):
         this CTE.
         """
         if isinstance(model_or_queryset, QuerySet):
-            queryset = model_or_queryset.clone()
+            queryset = model_or_queryset.all()
         else:
-            queryset = model_or_queryset.objects.get_queryset()
+            queryset = model_or_queryset.objects.all()
         query = queryset.query
         self._add_to_query(query)
         return queryset.filter(*filter_q, **filter_kw)
