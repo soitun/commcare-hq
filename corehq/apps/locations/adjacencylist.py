@@ -1,18 +1,16 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from contextlib import contextmanager
-import django
 from django.db.models import Manager
-from django.db.models.expressions import Value
 from django.db.models.query import Q, QuerySet
-from mptt.models import MPTTModel  #, TreeManager
+from mptt.models import MPTTModel
 
 from .cte import With
 
-class ALManager(Manager):
-#class ALManager(TreeManager)
 
-    def get_ancestors(self, node, include_self=False): # ascending=False removed, check if needed
+class ALManager(Manager):
+
+    def get_ancestors(self, node, include_self=False):
         """Query node ancestors
 
         :param node: A model instance or a QuerySet or Q object querying
@@ -39,10 +37,11 @@ class ALManager(Manager):
             return self.filter(where).values(
                 "pk",
                 parent_col,
-                #level=Value(0),
             ).union(
-                cte.join(self.model, pk=getattr(cte.col, parent_col))
-                    .values("pk", parent_col), #level=cte.col.level + 1),
+                cte.join(self.model, pk=getattr(cte.col, parent_col)).values(
+                    "pk",
+                    parent_col,
+                ),
                 all=True,
             )
 
@@ -78,16 +77,17 @@ class ALManager(Manager):
             return self.filter(where).values(
                 "pk",
                 parent_col,
-                #level=Value(0),
             ).union(
-                cte.join(self.model, **{parent_col: cte.col.pk})
-                    .values("pk", parent_col), #level=cte.col.level + 1),
+                cte.join(self.model, **{parent_col: cte.col.pk}).values(
+                    "pk",
+                    parent_col,
+                ),
                 all=True,
             )
 
         cte = With.recursive(make_cte_query)
         print(self.get_queryset().with_cte(cte).filter(pk=cte.col.pk).query)
-#        raise Exception('stop')
+        #raise Exception('stop')
         return self.get_queryset().with_cte(cte).filter(pk=cte.col.pk)
 
     get_queryset_ancestors = get_ancestors
