@@ -4,7 +4,8 @@ import weakref
 
 import django
 from django.db import connections
-from django.db.models.expressions import Col
+from django.db.models.expressions import Col, Expression
+from django.db.models.options import Options
 from django.db.models.query import QuerySet
 from django.db.models.sql import (
     AggregateQuery, DeleteQuery, InsertQuery, Query, UpdateQuery,
@@ -13,9 +14,6 @@ from django.db.models.sql.compiler import (
     SQLAggregateCompiler, SQLCompiler, SQLDeleteCompiler, SQLInsertCompiler,
     SQLUpdateCompiler,
 )
-from django.db.models.sql.constants import INNER
-from django.db.models.sql.datastructures import Join
-from django.core.exceptions import FieldDoesNotExist
 
 
 class With(object):
@@ -74,8 +72,8 @@ class With(object):
         query._cte_refs[self] = (name, alias)
         return name, alias
 
-    def _ref(self, query):
-        """Get alias of this CTE in the given query
+    def _get_name_alias(self, query):
+        """Get `(name, alias)` for this CTE in the given query
 
         This adds the CTE to the query's extra tables if it is not
         already reference by the query.
@@ -83,99 +81,59 @@ class With(object):
         if isinstance(query.model, CTEModel):
             cte = query.model._meta._cte()
             assert cte is self, (cte, self)
-            return self.name
-        if self not in query._cte_refs:
-            alias = self._add_to_query(query)[1]
-        else:
-            alias = query._cte_refs[self][1]
-        return alias
-
-    def _get_name(self, query):
-        """Get name of this CTE in the given query
-
-        This adds the CTE to the query's extra tables if it is not
-        already reference by the query.
-        """
-        if isinstance(query.model, CTEModel):
-            cte = query.model._meta._cte()
-            assert cte is self, (cte, self)
-            return self.name
-        if self not in query._cte_refs:
-            name = self._add_to_query(query)[0]
-        else:
-            name = query._cte_refs[self][0]
-        return name
+            assert query is not self._queryset.query
+            return self._get_name_alias(self._queryset.query)
+        try:
+            return query._cte_refs[self]
+        except KeyError:
+            return self._add_to_query(query)
 
     def _resolve_ref(self, name):
         return self._queryset.query.resolve_ref(name)
 
-    def join(self, model_or_queryset, **conditions):
-        """Recursively join this CTE to the given model class
+    def join(self, model_or_queryset, *filter_q, **filter_kw):
+        """Join this CTE to the given model or queryset
+
+        This CTE will be refernced by the returned queryset, but the
+        corresponding `WITH ...` statement will not be prepended
+        to the queryset's SQL output; use `cte.queryset()` or
+        `CTEQuerySet.with_cte(cte)` to achieve that outcome.
 
         :param model_or_queryset: Model class or queryset to which the
         CTE should be joined.
-        :param **conditions: Join conditions. All LHS fields (kwarg keys)
-        are assumed to reference `model` fields. Use `cte.col.name` on
-        the RHS to recursively reference CTE query fields.
-        :returns: A queryset with the given model joined to this CTE.
+        :param *filter_q: Join condition Q expressions (optional).
+        :param **filter_kw: Join conditions. All LHS fields (kwarg keys)
+        are assumed to reference `model_or_queryset` fields. Use
+        `cte.col.name` on the RHS to recursively reference CTE query
+        columns. For example: `cte.join(Book, id=cte.col.id)`
+        :returns: A queryset with the given model or queryset joined to
+        this CTE.
         """
         if isinstance(model_or_queryset, QuerySet):
             queryset = model_or_queryset.clone()
         else:
             queryset = model_or_queryset.objects.get_queryset()
         query = queryset.query
-        num = len(query._cte_refs)
-        while True:
-            cte_name = "{}{}".format(self.name, num)
-            if cte_name not in query.tables:
-                break
-            num += 1
-        alias = query.get_initial_alias()
-        join_field = CTEJoinField(self, query, **conditions)
-        # Joining this way allows more natrual join semantics for the
-        # generated SQL, but less expressive join conditions (can only
-        # use `=` operator and other limitations of
-        # `django.db.models.sql.datastructures.Join`). Would be nice to
-        # support full Q() expressions for join conditions.
-        join = Join(cte_name, alias, None, INNER, join_field, nullable=False)
-        cte_alias = query.join(join)
-        query._cte_refs[self] = (cte_name, cte_alias)
-        return queryset
+        self._add_to_query(query)
+        return queryset.filter(*filter_q, **filter_kw)
 
     def queryset(self, model=None):
+        """Get a queryset selecting from this CTE
+
+        The CTE `WITH ...` clause will be prepended to the queryset's
+        SQL output.
+
+        :param model: Optional model class to use as the queryset's
+        primary model. If this is provided the CTE will be added to
+        the queryset's table list and join conditions may be added
+        with a subsequent `.filter(...)` call.
+        :returns: A queryset.
+        """
         query = CTEQuery(model)
         if model is None:
             model = query.model = CTEModel(self, query)
-        else:
-            query._cte_queries.append(self)
+        query._with_ctes.append(self)
         return CTEQuerySet(model, query)
-
-
-class CTEJoinField(object):
-
-    def __init__(self, cte, query, **conditions):
-        self.cte = weakref.ref(cte)
-        self.query = query
-        self.conditions = conditions
-
-    def get_joining_columns(self):
-        def cols(key, value):
-            if not isinstance(value, CTEColumn):
-                raise TypeError("bad CTE join value: {!r}".format(value))
-            if value.cte is not self.cte():
-                raise ValueError("unexpected CTE reference: {!r}".format(value))
-            col = self.query.resolve_ref(key, allow_joins=False)
-            x, lhs_column = col.target.get_attname_column()
-            x, rhs_column = value.target.get_attname_column()
-            return lhs_column, rhs_column
-        def get_cols():
-            return sorted(cols(k, v) for k, v in self.conditions.items())
-        # HACK because `django.db.models.sql.datastructures.Join` is too
-        # eager in calling `join_field.get_joining_columns()`
-        return LazyReentrantGenerator(get_cols)
-
-    def get_extra_restriction(self, *args, **kw):
-        return None
 
 
 class CTEModel(object):
@@ -188,37 +146,38 @@ class CTEModel(object):
         return type(self)(self._meta._cte(), query)
 
 
-class CTEMeta(object):
+class CTEMeta(Options):
 
     def __init__(self, cte, query):
+        super(CTEMeta, self).__init__(None)
+        self.managed = False
+        self.model = None
         self._cte = weakref.ref(cte)
         self._query = weakref.ref(query)
 
     @property
     def db_table(self):
-        return self._cte()._get_name(self._query())
+        return self._cte()._get_name_alias(self._query())[0]
 
-    def get_field(self, field_name):
-        for field in self.get_fields():
-            if field.name == field_name:
-                return field
-        raise FieldDoesNotExist(
-            "%s has no field named '%s'" % (self.db_table, field_name))
-
-    def get_fields(self):
-        return [col.target for col in self._cte()._queryset.query.select]
+    @db_table.setter
+    def db_table(self, value):
+        if value != '':
+            raise AttributeError("CTEMeta.db_table is read-only")
 
     @property
-    def concrete_fields(self):
-        return [f for f in self.get_fields() if f.concrete]
+    def local_fields(self):
+        return [col.target
+            for col in self._cte()._queryset.query.select
+            if isinstance(col, Col)]
+
+    @local_fields.setter
+    def local_fields(self, value):
+        if value != []:
+            raise AttributeError("CTEMeta.local_fields is read-only")
 
     @property
-    def related_objects(self):
-        return [
-            f for f in self.get_fields()
-            if (f.one_to_many or f.one_to_one)
-            and f.auto_created and not f.concrete
-        ]
+    def _relation_tree(self):
+        return []
 
 
 class CTEColumns(object):
@@ -230,7 +189,7 @@ class CTEColumns(object):
         return CTEColumn(self._cte(), name)
 
 
-class CTEColumn(Col):
+class CTEColumn(Expression):
 
     def __init__(self, cte, name):
         self.cte = cte
@@ -239,18 +198,23 @@ class CTEColumn(Col):
     def __repr__(self):
         return "<{} {}>".format(self.__class__.__name__, self.name)
 
-    @property
-    def target(self):
-        return self.cte._resolve_ref(self.name).target
+    def _ref(self):
+        return self.cte._resolve_ref(self.name)
 
     @property
     def output_field(self):
-        return self.cte._resolve_ref(self.name).output_field
+        return self._ref().output_field
 
-    def resolve_expression(self, query, *args, **kw):
-        copy = super(CTEColumn, self).resolve_expression(query, *args, **kw)
-        copy.alias = self.cte._ref(query)
-        return copy
+    def as_sql(self, compiler, connection):
+        qn = compiler.quote_name_unless_alias
+        alias = self.cte._get_name_alias(compiler.query)[1]
+        ref = self._ref()
+        if isinstance(ref, Col):
+            # resolve column references like 'pk'
+            column = ref.target.column
+        else:
+            column = self.name
+        return "%s.%s" % (qn(alias), qn(column)), []
 
 
 class LazyReentrantGenerator(object):
@@ -280,8 +244,13 @@ class CTEQuerySet(QuerySet):
         super(CTEQuerySet, self).__init__(model, query, using, hints)
 
     def with_cte(self, cte):
+        """Add a Common Table Expression to the given queryset
+
+        The CTE `WITH ...` clause will be prepended to the queryset's
+        SQL output so it can be referenced in annotations, filters, etc.
+        """
         qs = self._clone()
-        qs.query._cte_queries.append(cte)
+        qs.query._with_ctes.append(cte)
         return qs
 
     def aggregate(self, *args, **kwargs):
@@ -297,7 +266,7 @@ class CTEQuery(Query):
 
     def __init__(self, *args, **kwargs):
         super(CTEQuery, self).__init__(*args, **kwargs)
-        self._cte_queries = []
+        self._with_ctes = []
         self._cte_refs = {}
 
     def get_compiler(self, using=None, connection=None):
@@ -317,12 +286,12 @@ class CTEQuery(Query):
         klass = COMPILER_TYPES.get(self.__class__, CTEQueryCompiler)
         return klass(self, connection, using)
 
-    def _chain(self, _name, klass=None, memo=None, **kwargs):
+    def __chain(self, _name, klass=None, memo=None, **kwargs):
         klass = QUERY_TYPES.get(klass, self.__class__)
         clone = getattr(super(CTEQuery, self), _name)(klass, memo, **kwargs)
         if isinstance(clone.model, CTEModel):
             clone.model = clone.model._copy_for_query(clone)
-        clone._cte_queries = self._cte_queries[:]
+        clone._with_ctes = self._with_ctes[:]
         clone._cte_refs = self._cte_refs.copy()
         return clone
 
@@ -333,7 +302,7 @@ class CTEQuery(Query):
                 methods such as 'update' and '_update' in order to generate UPDATE
                 queries rather than SELECT queries.
             """
-            return self._chain("clone", klass=None, memo=None, **kwargs)
+            return self.__chain("clone", klass=None, memo=None, **kwargs)
 
     else:
         def chain(self, klass=None):
@@ -342,7 +311,7 @@ class CTEQuery(Query):
                 methods such as 'update' and '_update' in order to generate UPDATE
                 queries rather than SELECT queries.
             """
-            return self._chain("chain", klass=None, memo=None, **kwargs)
+            return self.__chain("chain", klass=None)
 
 
 class CTECompiler(object):
@@ -357,35 +326,18 @@ class CTECompiler(object):
 
         sql = []
         params = []
-        tables = []
-        for cte in query._cte_queries:
-            name = cte._get_name(query)
-            # add the CTE table to the Query's extras precisely once
-            # (because we could be combining multiple CTE Queries).
-#            if name not in query.extra_tables and name not in tables:
-#                tables.append(name)
-
+        for cte in query._with_ctes:
             compiler = cte._queryset.query.get_compiler(connection=connection)
             cte_sql, cte_params = compiler.as_sql()
+            cte_name = cte._get_name_alias(query)[0]
             temp = cls.RECURSIVE if cte.recursive else cls.CTE
-            sql.append(temp.format(name=name, query=cte_sql))
+            sql.append(temp.format(name=cte_name, query=cte_sql))
             params.extend(cte_params)
-
-#        if tables:
-#            # HACK should not be mutating query here
-#            query.add_extra(
-#                select=None,
-#                select_params=None,
-#                where=None,
-#                params=None,
-#                tables=tables,
-#                order_by=None,
-#            )
 
         base_sql, base_params = as_sql()
         sql.append(base_sql)
         params.extend(base_params)
-        return "".join(sql), params
+        return "".join(sql), tuple(params)
 
 
 class CTEUpdateQuery(UpdateQuery, CTEQuery):
