@@ -23,7 +23,7 @@ class With(object):
     :param name: Optional name parameter for the CTE (default: "cte").
     This must be a unique name that does not conflict with other
     entities (tables, views, functions, other CTE(s), etc.) referenced
-    in the given query as well as in the query to which this CTE will
+    in the given query as well any query to which this CTE will
     eventually be added.
     """
 
@@ -52,7 +52,7 @@ class With(object):
 
     def _add_to_query(self, query):
         if not query.tables:
-            # HACK? prevent CTE becoming the initial alias
+            # prevent CTE becoming the initial alias
             query.get_initial_alias()
         name = self.name
         if name in query.tables:
@@ -120,7 +120,6 @@ class With(object):
 
 
 class CTEModel(object):
-    # TODO make this implement model interface needed by query/queryset
 
     def __init__(self, cte, query):
         self._meta = CTEMeta(cte, query)
@@ -197,24 +196,11 @@ class CTEColumn(Expression):
     def as_sql(self, compiler, connection):
         qn = compiler.quote_name_unless_alias
         ref = self._ref()
-        if isinstance(ref, Col):
-            # resolve column references like 'pk'
+        if isinstance(ref, Col) and self.name == "pk":
             column = ref.target.column
         else:
             column = self.name
         return "%s.%s" % (qn(self.cte.name), qn(column)), []
-
-
-class LazyReentrantGenerator(object):
-
-    def __init__(self, get_items):
-        self.get_items = get_items
-        self.items = None
-
-    def __iter__(self):
-        if self.items is None:
-            self.items = self.get_items()
-        return iter(self.items)
 
 
 class CTEQuerySet(QuerySet):
@@ -240,9 +226,6 @@ class CTEQuerySet(QuerySet):
         qs = self._clone()
         qs.query._with_ctes.insert(0, cte)
         return qs
-
-    def aggregate(self, *args, **kwargs):
-        raise NotImplementedError("not implemented")
 
 
 class CTEQuery(Query):
