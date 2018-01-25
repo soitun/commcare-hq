@@ -46,9 +46,9 @@ class ALManager(Manager):
             )
 
         cte = With.recursive(make_cte_query)
-        print(self.get_queryset().with_cte(cte).filter(pk=cte.col.pk).query)
+        print(cte.join(self.all(), pk=cte.col.pk).with_cte(cte).query)
         #raise Exception('stop')
-        return self.get_queryset().with_cte(cte).filter(pk=cte.col.pk)
+        return cte.join(self.all(), pk=cte.col.pk).with_cte(cte)
 
     def get_descendants(self, node, include_self=False):
         """Query node descendants
@@ -86,9 +86,9 @@ class ALManager(Manager):
             )
 
         cte = With.recursive(make_cte_query)
-        print(self.get_queryset().with_cte(cte).filter(pk=cte.col.pk).query)
+        print(cte.join(self.all(), pk=cte.col.pk).with_cte(cte).query)
         #raise Exception('stop')
-        return self.get_queryset().with_cte(cte).filter(pk=cte.col.pk)
+        return cte.join(self.all(), pk=cte.col.pk).with_cte(cte)
 
     get_queryset_ancestors = get_ancestors
     get_queryset_descendants = get_descendants
