@@ -11,7 +11,7 @@ from corehq.apps.locations.models import SQLLocation, LocationType, LocationFixt
 from corehq import toggles
 
 import six
-from django.db.models import IntegerField
+from django.db.models import IntegerField, Lookup
 from django.db.models.expressions import (
     Case, Exists, ExpressionWrapper, F, Func, RawSQL, Subquery, Value, When,
 )
@@ -214,27 +214,44 @@ flat_location_fixture_generator = LocationFixtureProvider(
 )
 
 
+intField = IntegerField()
+intArray = ArrayField(intField)
+
+
+class Array(Func):
+    function = "Array"
+    template = '%(function)s[%(expressions)s]'
+    output_field = intArray
+
+
+class array_append(Func):
+    function = "array_append"
+    output_field = intArray
+
+
+class array_prepend(Func):
+    function = "array_prepend"
+    output_field = intArray
+
+
+@IntegerField.register_lookup
+class EqualsAny(Lookup):
+    # Can't use Func for ANY(...) because functions are wrapped in parens
+    # resulting in SQL like `... = (ANY(...))` which is not valid.
+    lookup_name = "eq_any"
+
+    def as_postgresql(self, compiler, connection):
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
+        params = lhs_params + rhs_params
+        return '%s = ANY(%s)' % (lhs, rhs), params
+
+
 def get_location_fixture_queryset(user):
     if toggles.SYNC_ALL_LOCATIONS.enabled(user.domain):
         return SQLLocation.active_objects.filter(domain=user.domain).prefetch_related('location_type')
 
     user_locations = user.get_sql_locations(user.domain).prefetch_related('location_type')
-
-    intField = IntegerField()
-    intArray = ArrayField(intField)
-
-    class Array(Func):
-        function = "Array"
-        template = '%(function)s[%(expressions)s]'
-        output_field = intArray
-
-    class array_append(Func):
-        function = "array_append"
-        output_field = intArray
-
-    class array_prepend(Func):
-        function = "array_prepend"
-        output_field = intArray
 
     # expand_to CTE fields:
     # - expand_from_path: array of location ids (expand_from_id and ancestors)
@@ -351,10 +368,10 @@ def get_location_fixture_queryset(user):
         ).order_by().values(
             # expand_from_path is null for include_without_expanding locations
             # so will not cause grouping problems (see expand_to_depth below)
-            expand_from_path=expand_to_inner.col.expand_from_path,
+            "expand_from_path",
 
             # expand_to_type_id is either not null or -> include_without_expanding
-            expand_to_type_id=expand_to_inner.col.expand_to_type_id,
+            "expand_to_type_id",
 
             # expand_to_depth is aggregated on expand_to_type_id
             # (other group by fields are irrelevant)
@@ -364,27 +381,31 @@ def get_location_fixture_queryset(user):
     )
 
     def descendants_cte(cte):
-        is_included = Exists(
-            expand_to.queryset().values(
-                expand_to_type_id=expand_to.col.expand_to_type_id,
-                # HACK had to use RawSQL because OuterRef is broken
-                # https://code.djangoproject.com/ticket/28621
-                outer_id=RawSQL('"locations_sqllocation"."id"', []),
-                depth=RawSQL('"locations_sqllocation"."depth"', []),
-                path=RawSQL('"locations_sqllocation"."path"', [], output_field=intArray),
-            ).filter(Q(
-                # expand_to_type_id is null -> include_without_expanding
-                expand_to_type_id__isnull=True,
-                depth__lte=expand_to.col.expand_to_depth,
-            ) | Q(
-                outer_id__in=expand_to.col.expand_from_path,
-            ) | Q(
-                path__contains=expand_to.col.expand_from_path,
-                depth__lte=expand_to.col.expand_to_depth,
-            )),
-        )
+        def is_included(depth_expr, path_expr):
+            return Exists(
+                expand_to.queryset().annotate(
+                    # HACK use RawSQL because OuterRef is broken
+                    # https://code.djangoproject.com/ticket/28621
+                    outer_id=RawSQL('"locations_sqllocation"."id"', [], output_field=intField),
+                ).annotate(
+                    #expand_to_type_id=expand_to.col.expand_to_type_id,
+                    depth=ExpressionWrapper(depth_expr, output_field=intField),
+                    path=ExpressionWrapper(path_expr, output_field=intArray),
+                ).filter(Q(
+                    # expand_to_type_id is null -> include_without_expanding
+                    expand_to_type_id__isnull=True,
+                    depth__lte=F("expand_to_depth"),
+                ) | Q(
+                    # ancestor of expand_from
+                    outer_id__eq_any=F("expand_from_path"),
+                ) | Q(
+                    # descendant of expand_from
+                    path__contains=F("expand_from_path"),
+                    depth__lte=F("expand_to_depth"),
+                )).values(value=Value(1, output_field=intField)),
+            )
         return SQLLocation.active_objects.annotate(
-            is_included=is_included,
+            is_included=is_included(Value(0), Array("outer_id")),
         ).values(
             "id",
             "parent_id",
@@ -398,7 +419,10 @@ def get_location_fixture_queryset(user):
             cte.join(SQLLocation.active_objects.all(), parent_id=cte.col.id).annotate(
                 depth=cte.col.depth + Value(1, output_field=intField),
                 path=array_append(cte.col.path, "id"),
-                is_included=is_included,
+                is_included=is_included(
+                    cte.col.depth + Value(1, output_field=intField),
+                    array_append(cte.col.path, "outer_id"),
+                ),
             ).filter(
                 domain__exact=user.domain,
                 is_included=True,
@@ -419,7 +443,6 @@ def get_location_fixture_queryset(user):
         depth=descendants.col.depth,
     ).order_by("path")
     print(result.query)
-    raise Exception("stop")
     return result
 
 #def get_location_fixture_queryset(user):
