@@ -255,18 +255,17 @@ def get_location_fixture_queryset(user):
 
     # expand_to CTE fields:
     # - expand_from_path: array of location ids (expand_from_id and ancestors)
-    # - expand_to_type_id: location type id to expand to (used for grouping)
     # - expand_to_depth: int
     #
     # Examples:
-    # _from_path   | _to_type_id | _to_depth
-    # -------------|-------------|----------
-    # NULL         | NULL        | 3  -- include_without_expanding IS NOT NULL or expand_from_root = TRUE
-    # [1, 10]      | 1001        | 4  -- expand_from_type = loc_10.location_type (expand_from IS NULL)
-    # [2, 20, 200] | 20001       | 5  -- expand_from_type = loc_200.location_type.expand_from
+    # _from_path   | _to_depth
+    # -------------|----------
+    # NULL         | 3  -- include_without_expanding IS NOT NULL or expand_from_root = TRUE
+    # [1, 10]      | 4  -- expand_from_type = loc_10.location_type (expand_from IS NULL)
+    # [1, 20, 200] | 5  -- expand_from_type = loc_200.location_type.expand_from
     #
-    # - Locations with depth <= expand_to_depth will be included when
-    #   expand_to_type_id IS NULL.
+    # - All locations with depth <= expand_to_depth will be included when
+    #   expand_from_path IS NULL.
     # - Locations identified in expand_from_path will be included.
     # - Locations whose path contains expand_from_path (i.e., descendants
     #   of the last element in expand_from_path) and with depth <=
@@ -277,6 +276,19 @@ def get_location_fixture_queryset(user):
     #   expand_to IS NULL.
     # - expand_from_root = TRUE seems to do the same thing as
     #   include_without_expanding IS NOT NULL.
+    #
+    # This expand_to result set can probably be further optimized to exclude
+    # overlapping (redundant) paths from the expand_to CTE. Another idea for
+    # optimization is to unnest the expand_from_path arrays resulting in the
+    # following output structure:
+    #
+    # location_id | expand_depth
+    # ------------|-------------
+    # NULL        | 3     -- include all locatinos with depth <= 3
+    # 1           | NULL  -- include loc 1 (do not expand)
+    # 10          | 4     -- include all descendents of loc 10 to depth 4
+    # 20          | NULL
+    # 200         | 5
 
     def expand_to_cte(cte):
         expand_from_type = Coalesce(
@@ -299,7 +311,6 @@ def get_location_fixture_queryset(user):
             )
         ).values(
             "parent_id",
-            # expand_to_type_id IS NULL when include_without_expanding IS NOT NULL
             expand_from_type_id=Case(
                 When(Q(
                     location_type__include_without_expanding__isnull=False,
@@ -318,15 +329,6 @@ def get_location_fixture_queryset(user):
                 ),
                 default=Value(None, output_field=intArray),
                 output_field=intArray,
-            ),
-            expand_to_type_id=Case(
-                When(Q(
-                    location_type__include_without_expanding__isnull=False,
-                ) | Q(
-                    location_type___expand_from_root=Value(True),
-                ), then=None),
-                default=F("location_type__expand_to"),
-                output_field=intField,
             ),
             depth=Value(0, output_field=intField),
         ).union(
@@ -355,7 +357,6 @@ def get_location_fixture_queryset(user):
                     default=Value(None, output_field=intArray),
                     output_field=intArray,
                 ),
-                expand_to_type_id=cte.col.expand_to_type_id,
                 depth=cte.col.depth + Value(1, output_field=intField)
             ),
             all=True,
@@ -366,15 +367,7 @@ def get_location_fixture_queryset(user):
             # exclude all but the root items
             parent_id__isnull=True,
         ).order_by().values(
-            # expand_from_path is null for include_without_expanding locations
-            # so will not cause grouping problems (see expand_to_depth below)
             "expand_from_path",
-
-            # expand_to_type_id is either not null or -> include_without_expanding
-            "expand_to_type_id",
-
-            # expand_to_depth is aggregated on expand_to_type_id
-            # (other group by fields are irrelevant)
             expand_to_depth=Max(expand_to_inner.col.depth, output_field=intField),
         ),
         "expand_to",
@@ -388,12 +381,11 @@ def get_location_fixture_queryset(user):
                     # https://code.djangoproject.com/ticket/28621
                     outer_id=RawSQL('"locations_sqllocation"."id"', [], output_field=intField),
                 ).annotate(
-                    #expand_to_type_id=expand_to.col.expand_to_type_id,
                     depth=ExpressionWrapper(depth_expr, output_field=intField),
                     path=ExpressionWrapper(path_expr, output_field=intArray),
                 ).filter(Q(
-                    # expand_to_type_id is null -> include_without_expanding
-                    expand_to_type_id__isnull=True,
+                    # expand_from_path is null -> include_without_expanding or expand_from_root
+                    expand_from_path__isnull=True,
                     depth__lte=F("expand_to_depth"),
                 ) | Q(
                     # ancestor of expand_from
