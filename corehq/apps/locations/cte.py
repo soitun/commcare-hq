@@ -148,9 +148,19 @@ class CTEMeta(Options):
 
     @property
     def local_fields(self):
-        return [col.target
-            for col in self._cte()._queryset.query.select
-            if isinstance(col, Col)]
+        cte = self._cte()
+        query = cte._queryset.query
+        opts = query.get_meta()
+        fields = []
+        if query.default_cols:
+            assert not query.select, query.select
+            fields.extend(opts.concrete_fields)
+        else:
+            fields.extend(CTEField(cte, col.target.column, col.output_field)
+                for col in query.select)
+        fields.extend(CTEField(cte, alias, annotation.output_field)
+            for alias, annotation in query.annotation_select.items())
+        return fields
 
     @local_fields.setter
     def local_fields(self, value):
@@ -171,36 +181,81 @@ class CTEColumns(object):
         return CTEColumn(self._cte(), name)
 
 
-class CTEColumn(Expression):
+class CTERef(object):
 
-    def __init__(self, cte, name):
-        self.cte = cte
-        self.name = name
+    def __init__(self, cte, name, output_field=None):
+        self._cte_ref = weakref.ref(cte)
+        self.name = self.alias = name
+        self._output_field = output_field
 
     def __repr__(self):
-        return "<{} {}>".format(self.__class__.__name__, self.name)
+        return "<{} {}.{}>".format(
+            self.__class__.__name__,
+            self._cte.name,
+            self.name,
+        )
 
+    @property
+    def _cte(self):
+        return self._cte_ref()
+
+    @property
     def _ref(self):
-        return self.cte._resolve_ref(self.name)
+        if self._cte._queryset is None:
+            raise ValueError(
+                "cannot resolve '{cte}.{name}' in recursive CTE setup. "
+                "Hint: use ExpressionWrapper({cte}.col.{name}, "
+                "output_field=...)".format(cte=self._cte.name, name=self.name)
+            )
+        return self._cte._resolve_ref(self.name)
+
+    @property
+    def target(self):
+        return self._ref.target
 
     @property
     def output_field(self):
-        if self.cte._queryset is None:
-            raise ValueError(
-                "cannot resolve '{cte}.{name}' output field in recursive CTE "
-                "setup. Hint: use ExpressionWrapper({cte}.col.{name}, "
-                "output_field=...)".format(cte=self.cte.name, name=self.name)
-            )
-        return self._ref().output_field
+        if self._output_field is not None:
+            return self._output_field
+        return self._ref.output_field
+
+
+class CTEColumn(CTERef, Expression):
 
     def as_sql(self, compiler, connection):
         qn = compiler.quote_name_unless_alias
-        ref = self._ref()
+        ref = self._ref
         if isinstance(ref, Col) and self.name == "pk":
             column = ref.target.column
         else:
             column = self.name
-        return "%s.%s" % (qn(self.cte.name), qn(column)), []
+        return "%s.%s" % (qn(self._cte.name), qn(column)), []
+
+
+class CTEField(CTERef):
+
+    concrete = False
+    is_relation = False
+
+    def get_col(self, alias, output_field=None):
+        output_field = output_field or self.output_field
+        return Col(alias, self, output_field)
+        #return CTEColumn(self._cte, self.name, output_field)
+
+    @property
+    def model(self):
+        query = self._cte._queryset.query
+        model = query.model
+        if isinstance(model, CTEModel) and model._meta._cte() is self._cte:
+            return model
+        return CTEModel(self._cte, query)
+
+    @property
+    def column(self):
+        return self.name
+
+    def __getattr__(self, name):
+        return getattr(self.output_field, name)
 
 
 class CTEQuerySet(QuerySet):
