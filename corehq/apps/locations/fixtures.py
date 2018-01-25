@@ -220,7 +220,8 @@ def get_location_fixture_queryset(user):
 
     user_locations = user.get_sql_locations(user.domain).prefetch_related('location_type')
 
-    intArray = ArrayField(IntegerField())
+    intField = IntegerField()
+    intArray = ArrayField(intField)
 
     class Array(Func):
         function = "Array"
@@ -235,67 +236,97 @@ def get_location_fixture_queryset(user):
         function = "array_prepend"
         output_field = intArray
 
-    # build expand_to cte with fields:
-    # - expand_to_type_id: location type id to expand to
+    # expand_to CTE fields:
     # - expand_from_path: array of location ids (expand_from_id and ancestors)
+    # - expand_to_type_id: location type id to expand to (used for grouping)
     # - expand_to_depth: int
+    #
+    # Examples:
+    # _from_path   | _to_type_id | _to_depth
+    # -------------|-------------|----------
+    # NULL         | NULL        | 3  -- include_without_expanding IS NOT NULL or expand_from_root = TRUE
+    # [1, 10]      | 1001        | 4  -- expand_from_type = loc_10.location_type (expand_from IS NULL)
+    # [2, 20, 200] | 20001       | 5  -- expand_from_type = loc_200.location_type.expand_from
+    #
+    # - Locations with depth <= expand_to_depth will be included when
+    #   expand_to_type_id IS NULL.
+    # - Locations identified in expand_from_path will be included.
+    # - Locations whose path contains expand_from_path (i.e., descendants
+    #   of the last element in expand_from_path) and with depth <=
+    #   expand_to_depth will be included.
+    #
+    # There may be ambiguities in location type configurations:
+    # - User location will be ignored if include_without_expanding IS NULL and
+    #   expand_to IS NULL.
+    # - expand_from_root = TRUE seems to do the same thing as
+    #   include_without_expanding IS NOT NULL.
+
     def expand_to_cte(cte):
         expand_from_type = Coalesce(
-            F("location_type___expand_from_id"),
-            F("location_type_id"),
+            F("location_type___expand_from"),
+            F("location_type"),
         )
         return SQLLocation.active_objects.filter(
             domain__exact=user.domain,
             location_type_id__in=Subquery(
                 user_locations.filter(Q(
-                    location_type__expand_to__isnull=False,
-                ) | Q(
                     location_type__include_without_expanding__isnull=False,
+                ) | Q(
+                    location_type__expand_to__isnull=False,
                 )).values(
                     value=Coalesce(
-                        F("location_type__expand_to"),
                         F("location_type__include_without_expanding"),
+                        F("location_type__expand_to"),
                     ),
                 )
             )
         ).values(
             "parent_id",
-            # expand_to_type_id is null when include_without_expanding is not
-            expand_to_type_id=F("location_type__expand_to"),
+            # expand_to_type_id IS NULL when include_without_expanding IS NOT NULL
             expand_from_type_id=Case(
                 When(Q(
-                    location_type___expand_from_root=Value(True),
-                ) | Q(
                     location_type__include_without_expanding__isnull=False,
+                ) | Q(
+                    location_type___expand_from_root=Value(True),
                 ), then=None),
                 default=expand_from_type,
-                output_field=IntegerField(),
+                output_field=intField,
             ),
             expand_from_path=Case(
                 When(
+                    location_type__include_without_expanding__isnull=True,
                     location_type___expand_from_root=Value(False),
-                    # TODO this is probably wrong
-                    # location_type_id = location_type_id -> always TRUE
-                    location_type_id=expand_from_type,
+                    location_type=expand_from_type,
                     then=Array("id"),
                 ),
                 default=Value(None, output_field=intArray),
                 output_field=intArray,
             ),
-            depth=Value(0, output_field=IntegerField()),
+            expand_to_type_id=Case(
+                When(Q(
+                    location_type__include_without_expanding__isnull=False,
+                ) | Q(
+                    location_type___expand_from_root=Value(True),
+                ), then=None),
+                default=F("location_type__expand_to"),
+                output_field=intField,
+            ),
+            depth=Value(0, output_field=intField),
         ).union(
-            cte.join(SQLLocation, id=cte.col.parent_id).annotate(
+            cte.join(
+                SQLLocation.active_objects.all(),
+                id=cte.col.parent_id,
+            ).annotate(
                 cte_expand_from_path=ExpressionWrapper(
                     cte.col.expand_from_path,
                     output_field=intArray,
                 ),
             ).values(
                 "parent_id",
-                expand_to_type_id=cte.col.expand_to_type_id,
                 expand_from_type_id=cte.col.expand_from_type_id,
                 expand_from_path=Case(
                     When(
-                        # prepend id to path when path exists
+                        # prepend id to path if path has been started
                         cte_expand_from_path__isnull=False,
                         then=array_prepend("id", cte.col.expand_from_path),
                     ),
@@ -307,54 +338,69 @@ def get_location_fixture_queryset(user):
                     default=Value(None, output_field=intArray),
                     output_field=intArray,
                 ),
-                depth=cte.col.depth + Value(1, output_field=IntegerField())
+                expand_to_type_id=cte.col.expand_to_type_id,
+                depth=cte.col.depth + Value(1, output_field=intField)
             ),
             all=True,
         )
-    expand_to_tmp = With.recursive(expand_to_cte)
+    expand_to_inner = With.recursive(expand_to_cte)
     expand_to = With(
-        expand_to_tmp.queryset().with_cte(expand_to_tmp).filter(
+        expand_to_inner.queryset().with_cte(expand_to_inner).filter(
+            # exclude all but the root items
             parent_id__isnull=True,
-        ).values(
-            expand_from_path=expand_to_tmp.col.expand_from_path,
-            dpth=expand_to_tmp.col.depth,
         ).order_by().values(
-            "expand_from_path",
-            expand_to_depth=Max("dpth", output_field=IntegerField()),
+            # expand_from_path is null for include_without_expanding locations
+            # so will not cause grouping problems (see expand_to_depth below)
+            expand_from_path=expand_to_inner.col.expand_from_path,
+
+            # expand_to_type_id is either not null or -> include_without_expanding
+            expand_to_type_id=expand_to_inner.col.expand_to_type_id,
+
+            # expand_to_depth is aggregated on expand_to_type_id
+            # (other group by fields are irrelevant)
+            expand_to_depth=Max(expand_to_inner.col.depth, output_field=intField),
         ),
-        "expand_pairs",
+        "expand_to",
     )
 
     def descendants_cte(cte):
-        return SQLLocation.objects.values(
+        is_included = Exists(
+            expand_to.queryset().values(
+                expand_to_type_id=expand_to.col.expand_to_type_id,
+                # HACK had to use RawSQL because OuterRef is broken
+                # https://code.djangoproject.com/ticket/28621
+                outer_id=RawSQL('"locations_sqllocation"."id"', []),
+                depth=RawSQL('"locations_sqllocation"."depth"', []),
+                path=RawSQL('"locations_sqllocation"."path"', [], output_field=intArray),
+            ).filter(Q(
+                # expand_to_type_id is null -> include_without_expanding
+                expand_to_type_id__isnull=True,
+                depth__lte=expand_to.col.expand_to_depth,
+            ) | Q(
+                outer_id__in=expand_to.col.expand_from_path,
+            ) | Q(
+                path__contains=expand_to.col.expand_from_path,
+                depth__lte=expand_to.col.expand_to_depth,
+            )),
+        )
+        return SQLLocation.active_objects.annotate(
+            is_included=is_included,
+        ).values(
             "id",
             "parent_id",
-            depth=Value(0, output_field=IntegerField()),
+            depth=Value(0, output_field=intField),
             path=Array("id"),
         ).filter(
             domain__exact=user.domain,
             parent__isnull=True,  # start at the root
+            is_included=True,
         ).union(
-            cte.join(SQLLocation, parent_id=cte.col.id).annotate(
-                depth=cte.col.depth + Value(1, output_field=IntegerField()),
+            cte.join(SQLLocation.active_objects.all(), parent_id=cte.col.id).annotate(
+                depth=cte.col.depth + Value(1, output_field=intField),
                 path=array_append(cte.col.path, "id"),
-                is_included=Exists(
-                    expand_to.queryset().values(
-                        expand_from_path=expand_to.col.expand_from_path,
-                        outer_id=RawSQL('"locations_sqllocation"."id"', []),
-                        depth=RawSQL('"locations_sqllocation"."depth"', []),
-                        path=RawSQL('"locations_sqllocation"."path"', []),
-                    ).filter(Q(
-                        expand_from_path__isnull=True,
-                        depth__lte=expand_to.col.expand_to_depth,
-                    ) | Q(
-                        outer_id__in=expand_to.col.expand_from_path,
-                    ) | Q(
-                        path__contains=expand_to.col.expand_from_path,
-                        depth__lte=expand_to.col.expand_to_depth,
-                    )),
-                ),
+                is_included=is_included,
             ).filter(
+                domain__exact=user.domain,
                 is_included=True,
             ).values(
                 "id",
@@ -366,42 +412,42 @@ def get_location_fixture_queryset(user):
         )
     descendants = With.recursive(descendants_cte, "descendants")
     result = descendants.join(
-        SQLLocation.active_objects
-        .all()
-        .with_cte(descendants)
-        .with_cte(expand_to),
+        SQLLocation.objects.all().with_cte(descendants).with_cte(expand_to),
         id=descendants.col.id
-    )
+    ).annotate(
+        path=descendants.col.path,
+        depth=descendants.col.depth,
+    ).order_by("path")
     print(result.query)
     raise Exception("stop")
     return result
 
 #def get_location_fixture_queryset(user):
-    if toggles.SYNC_ALL_LOCATIONS.enabled(user.domain):
-        return SQLLocation.active_objects.filter(domain=user.domain).prefetch_related('location_type')
-
-    user_locations = user.get_sql_locations(user.domain).prefetch_related('location_type')
-
-    all_locations = _get_include_without_expanding_locations(user.domain, user_locations)
-
-    for user_location in user_locations:
-        location_type = user_location.location_type
-        # returns either None or the level (integer) to exand to
-        expand_to_level = _get_level_to_expand_to(user.domain, location_type.expand_to)
-        expand_from_level = location_type.expand_from or location_type
-
-        # returns either all root locations or a single location (of expand_from_level type)
-        expand_from_locations = _get_locs_to_expand_from(user.domain, user_location, expand_from_level)
-
-        locs_below_expand_from = _get_children(expand_from_locations, expand_to_level)
-        locs_at_or_above_expand_from = (SQLLocation.active_objects
-                                        .get_queryset_ancestors(expand_from_locations, include_self=True))
-        locations_to_sync = locs_at_or_above_expand_from | locs_below_expand_from
-        if location_type.include_only.exists():
-            locations_to_sync = locations_to_sync.filter(location_type__in=location_type.include_only.all())
-        all_locations |= locations_to_sync
-
-    return all_locations
+#    if toggles.SYNC_ALL_LOCATIONS.enabled(user.domain):
+#        return SQLLocation.active_objects.filter(domain=user.domain).prefetch_related('location_type')
+#
+#    user_locations = user.get_sql_locations(user.domain).prefetch_related('location_type')
+#
+#    all_locations = _get_include_without_expanding_locations(user.domain, user_locations)
+#
+#    for user_location in user_locations:
+#        location_type = user_location.location_type
+#        # returns either None or the level (integer) to exand to
+#        expand_to_level = _get_level_to_expand_to(user.domain, location_type.expand_to)
+#        expand_from_level = location_type.expand_from or location_type
+#
+#        # returns either all root locations or a single location (of expand_from_level type)
+#        expand_from_locations = _get_locs_to_expand_from(user.domain, user_location, expand_from_level)
+#
+#        locs_below_expand_from = _get_children(expand_from_locations, expand_to_level)
+#        locs_at_or_above_expand_from = (SQLLocation.active_objects
+#                                        .get_queryset_ancestors(expand_from_locations, include_self=True))
+#        locations_to_sync = locs_at_or_above_expand_from | locs_below_expand_from
+#        if location_type.include_only.exists():
+#            locations_to_sync = locations_to_sync.filter(location_type__in=location_type.include_only.all())
+#        all_locations |= locations_to_sync
+#
+#    return all_locations
 
 
 def _get_level_to_expand_to(domain, expand_to):
@@ -449,66 +495,20 @@ def _get_include_without_expanding_locations(domain, assigned_locations):
         for loc in assigned_locations
         if loc.location_type.include_without_expanding_id is not None
     }
-    class Array(Func):
-        function = "Array"
-    class array_append(Func):
-        function = "array_append"
-
-    def ancestors_cte(ancestors):
-        return SQLLocation.active_objects.filter(
-            domain__exact=domain,
-            is_archived=False,
-            location_type_id__in=location_type_ids
-        ).values(
-            "id", "parent_id", level=Value(0),
-        ).union(
-            SQLLocation.objects
-                # JOIN ancestors ON SQLLocation.id = ancestors.parent_id
-                .filter(id=ancestors.col.parent_id)
-                .values("id", "parent_id", level=ancestors.col.level + 1),
-            all=True,
-        )
-    ancestors = With.recursive(ancestors_cte)
-    max_level = ancestors.annotate(
-        value=Max(ancestors.col.level)
-    ).values("value")
-
-    def descendants_cte(descendants):
-        return SQLLocation.active_objects.annotate(
-            level=Value(0),
-            path=Array("id"),
-        ).filter(
-            parent__isnull=True,
-            domain__exact=domain,
-        ).union(
-            SQLLocation.active_objects.filter(
-                # JOIN descendants ON SQLLocation.parent_id = descendants.id
-                parent_id=descendants.col.id,
-            ).annotate(
-                level=descendants.col.level + 1,
-                path=array_append(descendants.col.path, "id"),
-                base_id=descendants.col.base_id,
-            ).filter(
-                level__lte=max_level.col.value
-            ),
-            all=True,
-        )
-    return With.recursive(descendants_cte).with_cte(max_level)
-
-#    # all levels to include, based on the above loctypes
-#    forced_levels = (SQLLocation.active_objects
-#                     .filter(domain__exact=domain,
-#                             location_type_id__in=location_type_ids)
-#                     .values_list('level', flat=True)
-#                     .order_by('level')
-#                     .distinct('level'))
-#    if forced_levels:
-#        return (SQLLocation.active_objects
-#                .filter(domain__exact=domain,
-#                        level__lte=max(forced_levels))
-#                .prefetch_related('location_type'))
-#    else:
-#        return SQLLocation.objects.none()
+    # all levels to include, based on the above loctypes
+    forced_levels = (SQLLocation.active_objects
+                     .filter(domain__exact=domain,
+                             location_type_id__in=location_type_ids)
+                     .values_list('level', flat=True)
+                     .order_by('level')
+                     .distinct('level'))
+    if forced_levels:
+        return (SQLLocation.active_objects
+                .filter(domain__exact=domain,
+                        level__lte=max(forced_levels))
+                .prefetch_related('location_type'))
+    else:
+        return SQLLocation.objects.none()
 
 
 def _append_children(node, location_db, locations, data_fields):
