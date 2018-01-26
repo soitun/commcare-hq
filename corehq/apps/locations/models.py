@@ -619,9 +619,16 @@ class SQLLocation(ALModel):
 
     @property
     def path(self):
-        _path = list(reversed(self.lineage))
-        _path.append(self._id)
-        return _path
+        try:
+            return self._path
+        except AttributeError:
+            self._path = list(reversed(self.lineage))
+            self._path.append(self._id)
+        return self._path
+
+    @path.setter
+    def path(self, value):
+        self._path = value
 
     @classmethod
     def by_location_id(cls, location_id):

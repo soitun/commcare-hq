@@ -271,11 +271,19 @@ def get_location_fixture_queryset(user):
     #   of the last element in expand_from_path) and with depth <=
     #   expand_to_depth will be included.
     #
-    # There may be ambiguities in location type configurations:
+    # There may be ambiguities in location type configurations that could
+    # cause undefined outcomes:
     # - User location will be ignored if include_without_expanding IS NULL and
-    #   expand_to IS NULL.
+    #   expand_to IS NULL (maybe by design?).
     # - expand_from_root = TRUE seems to do the same thing as
-    #   include_without_expanding IS NOT NULL.
+    #   include_without_expanding IS NOT NULL (redundant config?).
+    # - expand_from_root = TRUE with expand_from IS NOT NULL seems logically
+    #   inconsistent.
+    # - include_without_expanding IS NOT NULL with expand_from IS NOT NULL
+    #   seems logically inconsistent.
+    # - expand_to could point to a location that is not its descendant
+    # - two location types along the same path could both have expand_to set
+    #   to different levels, making the expansion depth ambiguous.
     #
     # This expand_to result set can probably be further optimized to exclude
     # overlapping (redundant) paths from the expand_to CTE. Another idea for
@@ -291,10 +299,6 @@ def get_location_fixture_queryset(user):
     # 200         | 5
 
     def expand_to_cte(cte):
-        expand_from_type = Coalesce(
-            F("location_type___expand_from"),
-            F("location_type"),
-        )
         return SQLLocation.active_objects.filter(
             domain__exact=user.domain,
             location_type_id__in=Subquery(
@@ -311,20 +315,13 @@ def get_location_fixture_queryset(user):
             )
         ).values(
             "parent_id",
-            expand_from_type_id=Case(
-                When(Q(
-                    location_type__include_without_expanding__isnull=False,
-                ) | Q(
-                    location_type___expand_from_root=Value(True),
-                ), then=None),
-                default=expand_from_type,
-                output_field=intField,
-            ),
+            expand_to_type_id=F("location_type_id"),
+            expand_from_type_id=F("location_type___expand_from"),
             expand_from_path=Case(
                 When(
                     location_type__include_without_expanding__isnull=True,
                     location_type___expand_from_root=Value(False),
-                    location_type=expand_from_type,
+                    location_type=F("location_type___expand_from"),
                     then=Array("id"),
                 ),
                 default=Value(None, output_field=intArray),
@@ -336,13 +333,32 @@ def get_location_fixture_queryset(user):
                 SQLLocation.active_objects.all(),
                 id=cte.col.parent_id,
             ).annotate(
+                cte_expand_from_type_id=ExpressionWrapper(
+                    cte.col.expand_from_type_id,
+                    output_field=intField,
+                ),
                 cte_expand_from_path=ExpressionWrapper(
                     cte.col.expand_from_path,
                     output_field=intArray,
                 ),
+            ).annotate(
+                new_expand_from_type_id=Case(
+                    When(
+                        # found location with expand_to/expand_from settings
+                        cte_expand_from_type_id__isnull=True,
+                        location_type__expand_to=cte.col.expand_to_type_id,
+                        then=Coalesce(
+                            F("location_type___expand_from"),
+                            F("location_type_id"),
+                        ),
+                    ),
+                    default=cte.col.expand_from_type_id,
+                    output_field=intField,
+                ),
             ).values(
                 "parent_id",
-                expand_from_type_id=cte.col.expand_from_type_id,
+                expand_to_type_id=cte.col.expand_to_type_id,
+                expand_from_type_id=F("new_expand_from_type_id"),
                 expand_from_path=Case(
                     When(
                         # prepend id to path if path has been started
@@ -350,8 +366,10 @@ def get_location_fixture_queryset(user):
                         then=array_prepend("id", cte.col.expand_from_path),
                     ),
                     When(
-                        # start path at expand_from_type_id
-                        location_type_id=cte.col.expand_from_type_id,
+                        # start path at expand_from (or location_type_id if
+                        # this is the expansion point and expand_from IS NULL)
+                        cte_expand_from_type_id__isnull=True,
+                        location_type=F("new_expand_from_type_id"),
                         then=Array("id"),
                     ),
                     default=Value(None, output_field=intArray),
