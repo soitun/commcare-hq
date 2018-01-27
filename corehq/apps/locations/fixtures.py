@@ -270,9 +270,9 @@ def get_location_fixture_queryset(user):
 
     result = fixture_ids.join(
         SQLLocation.objects.all()
-        .with_cte(fixture_ids)
+        .with_cte(expand_to)
         .with_cte(expand_from)
-        .with_cte(expand_to),
+        .with_cte(fixture_ids),
         id=fixture_ids.col.id
     ).annotate(
         path=fixture_ids.col.path,

@@ -275,11 +275,12 @@ class CTEQuerySet(QuerySet):
     def with_cte(self, cte):
         """Add a Common Table Expression to this queryset
 
-        The CTE `WITH ...` clause will be prepended to the queryset's
-        SQL output so it can be referenced in annotations, filters, etc.
+        The CTE `WITH ...` clause will be added to the queryset's SQL
+        output (after other CTEs that have already been added) so it
+        can be referenced in annotations, filters, etc.
         """
         qs = self._clone()
-        qs.query._with_ctes.insert(0, cte)
+        qs.query._with_ctes.append(cte)
         return qs
 
 
