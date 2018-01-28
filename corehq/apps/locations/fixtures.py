@@ -11,7 +11,7 @@ from corehq.apps.locations.models import SQLLocation, LocationType, LocationFixt
 from corehq import toggles
 
 import six
-from django.db.models import IntegerField, Lookup
+from django.db.models import Field, IntegerField, Lookup
 from django.db.models.expressions import (
     Case, Exists, ExpressionWrapper, F, Func, OuterRef, RawSQL, Subquery,
     Value, When,
@@ -229,7 +229,7 @@ class array_append(Func):
     output_field = int_array
 
 
-@IntegerField.register_lookup
+@Field.register_lookup
 class EqualsAny(Lookup):
     # Can't use Func for ANY(...) because functions are wrapped in parens
     # resulting in SQL like `... = (ANY(...))` which is not valid.
@@ -240,6 +240,42 @@ class EqualsAny(Lookup):
         rhs, rhs_params = self.process_rhs(compiler, connection)
         params = lhs_params + rhs_params
         return '%s = ANY(%s)' % (lhs, rhs), params
+
+
+class WrapSQL(RawSQL):
+    """Wrap ORM-generated SQL expression(s) with raw SQL
+
+    Desparate measures for desparate times. Any `{named_sub_expression}`
+    slugs in the "wrapper" SQL string will be filled with the
+    corresponding ORM SQL expression passed as a keyword argument.
+    """
+
+    def __init__(self, _sql, **expressions):
+        self.sql = _sql
+        output_field = expressions.pop("output_field", Field())
+        self.expressions = expressions
+        # purposely skip RawSQL.__init__ by calling its super
+        super(RawSQL, self).__init__(output_field=output_field)
+
+    def __repr__(self):
+        return "{}({}, {})".format(
+            self.__class__.__name__, self.sql, self.expressions)
+
+    def as_sql(self, compiler, connection):
+        expressions = {}
+        params = []
+        for key, expr in self.expressions.items():
+            if hasattr(expr, "get_compiler"):
+                comp = expr.get_compiler(connection=connection)
+                expr_sql, expr_params = comp.as_sql()
+            else:
+                expr_sql, expr_params = expr.as_sql(compiler, connection)
+            expressions[key] = expr_sql
+            params.extend(expr_params)
+        return self.sql.format(**expressions), params
+
+    def get_group_by_cols(self):
+        return [self]
 
 
 def get_location_fixture_queryset(user):
@@ -258,6 +294,8 @@ def get_location_fixture_queryset(user):
     # - two location types along the same path could both have expand_to set
     #   to different levels, making the expansion depth ambiguous if a user
     #   had both of those locations.
+    # - ancestors could be excluded with improper include_only config.
+    #   seems like we could achieve the same thing with expand_from/expand_to
 
     if toggles.SYNC_ALL_LOCATIONS.enabled(user.domain):
         return SQLLocation.active_objects.filter(domain=user.domain).prefetch_related('location_type')
@@ -288,7 +326,7 @@ def _get_expand_to_depths_cte(user_locations):
 
     This traverses the location type hierarchy, which is assumed to
     mirror the location hierarchy but contain many less records. The
-    traversal is over of user locations' types and their ancestors, so
+    traversal is over user locations' types and their ancestors, so
     should be reasonably fast.
 
     CTE columns:
@@ -307,6 +345,22 @@ def _get_expand_to_depths_cte(user_locations):
             expand_to_type=F("id"),
             depth=Value(0, output_field=int_field),
         ).union(
+            # get depths of include_only location types
+            LocationType.objects.filter(id__in=WrapSQL(
+                """(
+                SELECT to_locationtype_id
+                FROM locations_locationtype_include_only
+                WHERE from_locationtype_id IN ({user_types})
+                )""",
+                user_types=user_locations.values("location_type").query,
+            )).values(
+                "parent_type_id",
+                expand_to_type=F("id"),
+                depth=Value(0, output_field=int_field),
+            ),
+            all=True,
+        ).union(
+            # include_without_expanding
             LocationType.objects.filter(
                 id__in=Subquery(
                     user_locations.filter(
@@ -339,7 +393,7 @@ def _get_expand_to_depths_cte(user_locations):
             "expand_to_type",
             expand_to_depth=Max(cte.col.depth, output_field=int_field),
         ),
-        "expand_to_depths",
+        "expand_to",
     )
 
 
@@ -365,6 +419,12 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
         return SQLLocation.active_objects.filter(
             domain__exact=domain,
             id__in=Subquery(user_locations.values("id")),
+        ).annotate(
+            is_include_only_type=Exists(
+                LocationType.objects
+                .filter(included_in=OuterRef("location_type"))
+                .values(value=Value(1, output_field=int_field)),
+            ),
         ).values(
             "parent_id",
             expand_from_type=Case(
@@ -402,6 +462,19 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
                         .filter(expand_to_type=-1)
                         .values("expand_to_depth")
                     ),
+                ),
+                When(
+                    # Expand to deepest include_only location type. This
+                    # method of inclusion will also include all
+                    # ancestors of locations included via include_only.
+                    is_include_only_type=True,
+                    then=RawSQL("""(
+                        SELECT Max(expand_to_depth)
+                        FROM locations_locationtype_include_only inc
+                            INNER JOIN expand_to ext
+                                ON expand_to_type = to_locationtype_id
+                        WHERE from_locationtype_id = locations_locationtype.id
+                    )""", []),
                 ),
                 When(
                     # get expand_to depth
