@@ -300,7 +300,14 @@ def get_location_fixture_queryset(user):
     if toggles.SYNC_ALL_LOCATIONS.enabled(user.domain):
         return SQLLocation.active_objects.filter(domain=user.domain).prefetch_related('location_type')
 
-    user_locations = user.get_sql_locations(user.domain).prefetch_related('location_type')
+    user_locations = user.get_sql_locations(user.domain)
+
+    if user_locations.query.is_empty():
+        # HACK special case because empty queryset causes non-recursive part of
+        # recursive CTE unions to be omitted -> invalid SQL -> Postgres error:
+        # recursive query "cte" does not have the form non-recursive-term UNION [ALL] recursive-term
+        # https://code.djangoproject.com/ticket/26061
+        return user_locations
 
     expand_to = _get_expand_to_depths_cte(user_locations)
     expand_from = _get_expansion_details_cte(user.domain, user_locations, expand_to)
@@ -315,7 +322,7 @@ def get_location_fixture_queryset(user):
     ).annotate(
         path=fixture_ids.col.path,
         depth=fixture_ids.col.depth,
-    ).order_by("path")
+    ).order_by("path").prefetch_related('location_type')
 
     print(result.query)
     return result
