@@ -335,6 +335,7 @@ def _get_expand_to_depths_cte(user_locations):
     """
     def expand_to_cte(cte):
         return LocationType.objects.filter(
+            # get expand_to location types
             id__in=Subquery(
                 user_locations.filter(
                     location_type__expand_to__isnull=False,
@@ -360,7 +361,7 @@ def _get_expand_to_depths_cte(user_locations):
             ),
             all=True,
         ).union(
-            # include_without_expanding
+            # get include_without_expanding location types
             LocationType.objects.filter(
                 id__in=Subquery(
                     user_locations.filter(
@@ -374,6 +375,7 @@ def _get_expand_to_depths_cte(user_locations):
             ),
             all=True,
         ).union(
+            # recursive CTE to calculate depths
             cte.join(
                 LocationType.objects.all(),
                 id=cte.col.parent_type_id,
@@ -404,7 +406,8 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
     be reasonably fast.
 
     CTE columns:
-    - loc_id: location id, null for include_without_expanding
+    - loc_id: location id, null for include_without_expanding or
+      expand_from_root.
     - depth: expand to depth. Negative values in this column have
       special meanings. See output examples below.
 
@@ -416,7 +419,14 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
      100    | -2     -- include all ancestors of location 100
     """
     def expand_from_cte(cte):
-        return SQLLocation.active_objects.filter(
+        return expand_to.queryset().filter(expand_to_type=-1).values(
+            # get include_without_expanding depth
+            parent_id=Value(None, output_field=int_field),
+            expand_from_type=Value(None, output_field=int_field),
+            loc_id=Value(None, output_field=int_field),
+            depth=expand_to.col.expand_to_depth,
+        ).union(
+            SQLLocation.active_objects.filter(
                 domain__exact=domain,
                 id__in=Subquery(user_locations.values("id")),
             ).annotate(
@@ -434,7 +444,6 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
                         Q(
                             location_type___expand_from__isnull=False,
                             location_type___expand_from_root=Value(False),
-                            location_type__include_without_expanding__isnull=True,
                         ) & ~Q(location_type___expand_from=F("location_type")),
                         then=F("location_type___expand_from"),
                     ),
@@ -444,9 +453,8 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
                 ),
                 loc_id=Case(
                     When(
-                        # include_without_expanding or expand_from_root -> no path
-                        Q(location_type___expand_from_root=Value(True)) |
-                        Q(location_type__include_without_expanding__isnull=False),
+                        # expand_from_root -> no path
+                        location_type___expand_from_root=Value(True),
                         then=Value(None),
                     ),
                     # first path element
@@ -454,15 +462,6 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
                     output_field=int_field,
                 ),
                 depth=Case(
-                    When(
-                        # get include_without_expanding depth
-                        location_type__include_without_expanding__isnull=False,
-                        then=Subquery(
-                            expand_to.queryset()
-                            .filter(expand_to_type=-1)
-                            .values("expand_to_depth")
-                        ),
-                    ),
                     When(
                         # Expand to deepest include_only location type. This
                         # method of inclusion will also include all
@@ -489,6 +488,8 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
                     default=Value(-2),
                     output_field=int_field,
                 ),
+            ),
+            all=True,
         ).union(
             cte.join(
                 SQLLocation.active_objects.all(),
@@ -518,7 +519,7 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
                     output_field=int_field,
                 ),
                 loc_id=Case(
-                    # include_without_expanding or expand_from_root -> no path
+                    # expand_from_root -> no path
                     When(cte_loc_id__isnull=True, then=Value(None)),
                     # next element of path
                     default=F("id"),
