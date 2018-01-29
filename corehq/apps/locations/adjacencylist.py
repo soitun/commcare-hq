@@ -2,21 +2,29 @@ from __future__ import absolute_import
 from __future__ import print_function
 from contextlib import contextmanager
 from django.db.models import Manager
+from django.db.models import IntegerField
+from django.db.models.expressions import Value
 from django.db.models.query import Q, QuerySet
 from mptt.models import MPTTModel
 
 from .cte import With
 
+int_field = IntegerField()
+
 
 class ALManager(Manager):
 
-    def get_ancestors(self, node, include_self=False):
+    def get_ancestors(self, node, ascending=False, include_self=False):
         """Query node ancestors
 
         :param node: A model instance or a QuerySet or Q object querying
         the adjacency list model. If a QuerySet, it should query a
         single value with something like `.values('pk')`. If Q the
         `include_self` argument will be ignored.
+        :param ascending: Order of results. The default (`False`) gets
+        results in descending order (root ancestor first, immediate
+        parent last).
+        :param include_self:
         :returns: A `QuerySet` instance.
         """
         parent_col = self.model.parent_id_attr
@@ -37,18 +45,26 @@ class ALManager(Manager):
             return self.filter(where).values(
                 "pk",
                 parent_col,
+                _depth=Value(0, output_field=int_field),
             ).union(
                 cte.join(self.model, pk=getattr(cte.col, parent_col)).values(
                     "pk",
                     parent_col,
+                    _depth=cte.col._depth - Value(1, output_field=int_field),
                 ),
                 all=True,
             )
 
         cte = With.recursive(make_cte_query)
-        print(cte.join(self.all(), pk=cte.col.pk).with_cte(cte).query)
+        queryset = (
+            cte
+            .join(self.all(), pk=cte.col.pk)
+            .with_cte(cte)
+            .order_by(("-" if ascending else "") + "{}._depth".format(cte.name))
+        )
+        print(queryset.query)
         #raise Exception('stop')
-        return cte.join(self.all(), pk=cte.col.pk).with_cte(cte)
+        return queryset
 
     def get_descendants(self, node, include_self=False):
         """Query node descendants
@@ -115,12 +131,11 @@ class ALModel(MPTTModel):
     def get_children(self):
         return self.children
 
-    def get_ancestors(self, ascending=False, include_self=False):
-        # TODO handle ascending
-        return type(self).objects.get_ancestors(self, include_self)
+    def get_ancestors(self, **kw):
+        return type(self).objects.get_ancestors(self, **kw)
 
-    def get_descendants(self, include_self=False):
-        return type(self).objects.get_descendants(self, include_self)
+    def get_descendants(self, **kw):
+        return type(self).objects.get_descendants(self, **kw)
 
 #    def _mptt_is_obsolete(self, *args, **kw):
 #        raise NotImplementedError("MPTTModel method not implemented")
