@@ -327,7 +327,7 @@ class CTEQuery(Query):
                 methods such as 'update' and '_update' in order to generate UPDATE
                 queries rather than SELECT queries.
             """
-            return self.__chain("clone", klass=None, memo=None, **kwargs)
+            return self.__chain("clone", klass, memo, **kwargs)
 
     else:
         def chain(self, klass=None):
@@ -336,7 +336,7 @@ class CTEQuery(Query):
                 methods such as 'update' and '_update' in order to generate UPDATE
                 queries rather than SELECT queries.
             """
-            return self.__chain("chain", klass=None)
+            return self.__chain("chain", klass)
 
 
 class CTECompiler(object):
