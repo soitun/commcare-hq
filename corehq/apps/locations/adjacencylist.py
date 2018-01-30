@@ -127,7 +127,7 @@ class ALModel(MPTTModel):
         abstract = True
 
     def get_children(self):
-        return self.children
+        return self.children.all()
 
     def get_ancestors(self, **kw):
         return type(self).objects.get_ancestors(self, **kw)
