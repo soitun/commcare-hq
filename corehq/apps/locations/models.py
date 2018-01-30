@@ -274,13 +274,21 @@ class LocationQueriesMixin(object):
             publish_location_saved(domain, location_id, is_deletion=True)
         return super(LocationQueriesMixin, self).delete(*args, **kwargs)
 
+    def _user_input_filter(self, domain, user_input):
+        """Build a Q expression for filtering on user input
+
+        Accepts partial matches, matches against name and site_code.
+        """
+        Q = models.Q
+        return Q(domain=domain) & Q(
+            Q(name__icontains=user_input) | Q(site_code__icontains=user_input)
+        )
+
     def filter_by_user_input(self, domain, user_input):
         """
         Accepts partial matches, matches against name and site_code.
         """
-        return (self.filter(domain=domain)
-                    .filter(models.Q(name__icontains=user_input) |
-                            models.Q(site_code__icontains=user_input)))
+        return self.filter(self._user_input_filter(domain, user_input))
 
 
 class LocationQuerySet(LocationQueriesMixin, CTEQuerySet):
@@ -338,7 +346,7 @@ class LocationManager(LocationQueriesMixin, ALManager):
             Massachusetts/Middlesex/Cambridge
         It matches by name or site-code
         """
-        direct_matches = self.filter_by_user_input(domain, user_input)
+        direct_matches = self._user_input_filter(domain, user_input)
         return self.get_queryset_descendants(direct_matches, include_self=True)
 
     def get_locations(self, location_ids):
