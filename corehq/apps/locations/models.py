@@ -264,7 +264,9 @@ class LocationQueriesMixin(object):
         assigned_location_ids = user.get_location_ids(domain)
         if not assigned_location_ids:
             return self.none()  # No locations are assigned to this user
-        return self.all() & SQLLocation.objects.get_locations_and_children(assigned_location_ids)
+        return self.filter(
+            id__in=SQLLocation.objects.get_locations_and_children(assigned_location_ids)
+        )
 
     def delete(self, *args, **kwargs):
         from .document_store import publish_location_saved
