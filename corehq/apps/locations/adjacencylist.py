@@ -52,7 +52,6 @@ class ALManager(Manager):
                     parent_col,
                     _depth=cte.col._depth - Value(1, output_field=int_field),
                 ),
-                all=True,
             )
 
         cte = With.recursive(make_cte_query)
@@ -98,7 +97,6 @@ class ALManager(Manager):
                     "pk",
                     parent_col,
                 ),
-                all=True,
             )
 
         cte = With.recursive(make_cte_query)
