@@ -255,11 +255,7 @@ class CTEField(CTERef):
 
 
 class CTEQuerySet(QuerySet):
-    """
-    The QuerySet which ensures all CTE Node SQL compilation is processed by the
-    CTE Compiler and has the appropriate extra syntax, selects, tables, and
-    WHERE clauses.
-    """
+    """QuerySet with support for Common Table Expressions"""
 
     def __init__(self, model=None, query=None, using=None, hints=None):
         # Only create an instance of a Query if this is the first invocation in
@@ -290,6 +286,13 @@ class CTEQuery(Query):
     def __init__(self, *args, **kwargs):
         super(CTEQuery, self).__init__(*args, **kwargs)
         self._with_ctes = []
+
+    def combine(self, other, connector):
+        if other._with_ctes:
+            if self._with_ctes:
+                raise TypeError("cannot merge queries with CTEs on both sides")
+            self._with_ctes = other._with_ctes[:]
+        return super(CTEQuery, self).combine(other, connector)
 
     def get_compiler(self, using=None, connection=None):
         """ Overrides the Query method get_compiler in order to return
