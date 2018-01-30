@@ -184,7 +184,7 @@ class CTEColumns(object):
 class CTERef(object):
 
     def __init__(self, cte, name, output_field=None):
-        self._cte_ref = weakref.ref(cte)
+        self._cte = cte
         self.name = self.alias = name
         self._output_field = output_field
 
@@ -194,10 +194,6 @@ class CTERef(object):
             self._cte.name,
             self.name,
         )
-
-    @property
-    def _cte(self):
-        return self._cte_ref()
 
     @property
     def _ref(self):
