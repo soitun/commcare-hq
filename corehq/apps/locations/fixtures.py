@@ -423,7 +423,7 @@ def _get_expansion_details_cte(domain, user_locations, expand_to):
      NULL   |  3     -- include all locations with depth <= 3
      1      | -1     -- include location 1 (but do not expand)
      10     |  4     -- include all descendents of location 10 to depth 4
-     100    | -2     -- include all ancestors of location 100
+     100    | -2     -- include all descendents of location 100, unlimited depth
     """
     def expand_from_cte(cte):
         return expand_to.queryset().filter(expand_to_type=-1).values(
