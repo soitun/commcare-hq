@@ -4,6 +4,7 @@ from datetime import timedelta
 from requests import HTTPError
 from casexml.apps.case.xform import extract_case_blocks
 from corehq.form_processor.interfaces.dbaccessors import CaseAccessors
+from corehq.motech.dhis2.models import JsonApiLog
 from corehq.motech.openmrs.logger import logger
 from corehq.motech.openmrs.openmrs_config import IdMatcher
 from six.moves import zip
@@ -50,6 +51,32 @@ ADDRESS_PROPERTIES = (
 )
 
 
+def log_request(func):
+
+    def request_wrapper(self, *args, **kwargs):
+        log_level = logging.INFO
+        request_error = ''
+        response_status = None
+        response_body = ''
+        try:
+            response = func(self, *args, **kwargs)
+            response_status = response.status_code
+            response_body = response.content
+        except Exception as err:
+            log_level = logging.ERROR
+            request_error = str(err)
+            raise err
+        else:
+            return response
+        finally:
+            request_headers = kwargs.pop('headers') or {}
+            # TODO: Differentiate OpenMRS logs from DHIS2 logs
+            JsonApiLog.log(log_level, self.domain_name, request_error, response_status, response_body,
+                           request_headers, func, *args, **kwargs)
+
+    return request_wrapper
+
+
 class Requests(object):
     def __init__(self, domain_name, base_url, username, password):
         import requests
@@ -62,14 +89,17 @@ class Requests(object):
     def get_url(self, uri):
         return '/'.join((self.base_url.rstrip('/'), uri.lstrip('/')))
 
+    @log_request
     def get(self, uri, *args, **kwargs):
         return self.requests.get(self.get_url(uri), *args,
                                  auth=(self.username, self.password), **kwargs)
 
+    @log_request
     def post(self, uri, *args, **kwargs):
         return self.requests.post(self.get_url(uri), *args,
                                   auth=(self.username, self.password), **kwargs)
 
+    @log_request
     def post_with_raise(self, uri, *args, **kwargs):
         response = self.post(uri, *args, **kwargs)
         try:
