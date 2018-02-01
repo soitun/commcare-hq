@@ -50,7 +50,7 @@ class ALManager(Manager):
                 cte.join(self.model, pk=getattr(cte.col, parent_col)).values(
                     "pk",
                     parent_col,
-                    _depth=cte.col._depth - Value(1, output_field=int_field),
+                    _depth=cte.col._depth + Value(1, output_field=int_field),
                 ),
             )
 
@@ -59,7 +59,7 @@ class ALManager(Manager):
             cte
             .join(self.all(), pk=cte.col.pk)
             .with_cte(cte)
-            .order_by(("-" if ascending else "") + "{}._depth".format(cte.name))
+            .order_by(("" if ascending else "-") + "{}._depth".format(cte.name))
         )
         print(queryset.query)
         #raise Exception('stop')
