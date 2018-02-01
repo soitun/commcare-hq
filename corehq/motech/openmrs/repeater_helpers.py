@@ -51,9 +51,10 @@ ADDRESS_PROPERTIES = (
 
 
 class Requests(object):
-    def __init__(self, base_url, username, password):
+    def __init__(self, domain_name, base_url, username, password):
         import requests
         self.requests = requests
+        self.domain_name = domain_name
         self.base_url = base_url
         self.username = username
         self.password = password
