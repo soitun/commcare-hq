@@ -1,7 +1,12 @@
 {% load i18n %}
 
+<button type="button" class="btn btn-default pull-left data-corrections-trigger">
+    <i class="fa fa-edit"></i>
+    {% trans 'Data Corrections' %}
+</button>
+
 <!-- class='hide' keeps modal from showing before knockout initializes & overwrites the class -->
-<div id="edit-dynamic-properties" class="hide" tabindex="-1" data-bind="attr: { 'class': 'modal fade ' + $root.modalClass() }, event: { 'hidden.bs.modal': init }">
+<div class="hide modal" tabindex="-1" data-bind="attr: { 'class': 'modal fade ' + $root.modalClass() }, event: { 'hidden.bs.modal': init }">
     <div data-bind="attr: { 'class': 'modal-dialog ' + $root.modalDialogClass() }">
         <div class="modal-content">
             <div class="modal-header with-controls">
