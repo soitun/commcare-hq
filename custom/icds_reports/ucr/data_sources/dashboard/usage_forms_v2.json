@@ -956,7 +956,7 @@
         {
           "column": "form_time",
           "subtype": "date",
-          "constraint": "day"
+          "constraint": "month"
         }
       ]
     },
