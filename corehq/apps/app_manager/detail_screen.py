@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from __future__ import unicode_literals
 from corehq.apps.app_manager import id_strings
 from corehq.apps.app_manager.suite_xml import xml_models as sx
 from corehq.apps.app_manager.suite_xml import const
@@ -201,7 +202,7 @@ class FormattedDetailColumn(object):
         return get_column_xpath_generator(self.app, self.module, self.detail,
                                           self.column).xpath
 
-    XPATH_FUNCTION = u"{xpath}"
+    XPATH_FUNCTION = "{xpath}"
 
     def evaluate_template(self, template):
         if template:
@@ -299,21 +300,21 @@ class Plain(FormattedDetailColumn):
 @register_format_type('date')
 class Date(FormattedDetailColumn):
 
-    XPATH_FUNCTION = u"if({xpath} = '', '', format_date(date(if({xpath} = '', 0, {xpath})),'short'))"
+    XPATH_FUNCTION = "if({xpath} = '', '', format_date(date(if({xpath} = '', 0, {xpath})),'short'))"
 
-    SORT_XPATH_FUNCTION = u"{xpath}"
+    SORT_XPATH_FUNCTION = "{xpath}"
 
 
 @register_format_type('time-ago')
 class TimeAgo(FormattedDetailColumn):
-    XPATH_FUNCTION = u"if({xpath} = '', '', string(int((today() - date({xpath})) div {column.time_ago_interval})))"
-    SORT_XPATH_FUNCTION = u"{xpath}"
+    XPATH_FUNCTION = "if({xpath} = '', '', string(int((today() - date({xpath})) div {column.time_ago_interval})))"
+    SORT_XPATH_FUNCTION = "{xpath}"
 
 
 @register_format_type('distance')
 class Distance(FormattedDetailColumn):
-    XPATH_FUNCTION = u"if(here() = '' or {xpath} = '', '', concat(round(distance({xpath}, here()) div 100) div 10, ' km'))"
-    SORT_XPATH_FUNCTION = u"if({xpath} = '', 2147483647, round(distance({xpath}, here())))"
+    XPATH_FUNCTION = "if(here() = '' or {xpath} = '', '', concat(round(distance({xpath}, here()) div 100) div 10, ' km'))"
+    SORT_XPATH_FUNCTION = "if({xpath} = '', 2147483647, round(distance({xpath}, here())))"
     SORT_TYPE = 'double'
 
 
@@ -331,9 +332,9 @@ class Enum(FormattedDetailColumn):
 
     def _make_xpath(self, type):
         if type == 'sort':
-            xpath_fragment_template = u"if({xpath} = '{key}', {i}, "
+            xpath_fragment_template = "if({xpath} = '{key}', {i}, "
         elif type == 'display':
-            xpath_fragment_template = u"if({xpath} = '{key}', ${key_as_var}, "
+            xpath_fragment_template = "if({xpath} = '{key}', ${key_as_var}, "
         else:
             raise ValueError('type must be in sort, display')
 
@@ -347,8 +348,8 @@ class Enum(FormattedDetailColumn):
                     i=i,
                 )
             )
-        parts.append(u"''")
-        parts.append(u")" * len(self.column.enum))
+        parts.append("''")
+        parts.append(")" * len(self.column.enum))
         return ''.join(parts)
 
     @property
@@ -384,7 +385,7 @@ class ConditionalEnum(Enum):
         return node
 
     def _make_xpath(self, type):
-        xpath_template = u"if({key_as_condition}, {key_as_var_name}"
+        xpath_template = "if({key_as_condition}, {key_as_var_name}"
         parts = []
         for i, item in enumerate(self.column.enum):
             parts.append(
@@ -394,8 +395,8 @@ class ConditionalEnum(Enum):
                 )
             )
 
-        parts.append(u"''")
-        parts.append(u")" * (len(self.column.enum)))
+        parts.append("''")
+        parts.append(")" * (len(self.column.enum)))
         return ''.join(parts)
 
 
@@ -430,15 +431,15 @@ class EnumImage(Enum):
         parts = []
         for i, item in enumerate(self.column.enum):
 
-            xpath_fragment_template = u"if({key_as_condition}, {key_as_var_name}".format(
+            xpath_fragment_template = "if({key_as_condition}, {key_as_var_name}".format(
                 key_as_condition=item.key_as_condition(self.xpath),
                 key_as_var_name=item.ref_to_key_variable(i, type)
             )
 
             parts.append(xpath_fragment_template)
 
-        parts.append(u"''")
-        parts.append(u")" * (len(self.column.enum)))
+        parts.append("''")
+        parts.append(")" * (len(self.column.enum)))
         return ''.join(parts)
 
 
@@ -446,7 +447,7 @@ class EnumImage(Enum):
 class LateFlag(HideShortHeaderColumn):
     template_width = "11%"
 
-    XPATH_FUNCTION = u"if({xpath} = '', '*', if(today() - date({xpath}) > {column.late_flag}, '*', ''))"
+    XPATH_FUNCTION = "if({xpath} = '', '*', if(today() - date({xpath}) > {column.late_flag}, '*', ''))"
 
 
 @register_format_type('invisible')
@@ -571,7 +572,7 @@ class PropertyXpathGenerator(BaseXpathGenerator):
 
         use_absolute = indexes or property == '#owner_name'
         if use_absolute:
-            case = CaseXPath(u'current()')
+            case = CaseXPath('current()')
         else:
             case = CaseXPath('')
 
@@ -588,7 +589,7 @@ class PropertyXpathGenerator(BaseXpathGenerator):
 
     @staticmethod
     def owner_name(owner_id):
-        groups = XPath(u"instance('groups')/groups/group")
+        groups = XPath("instance('groups')/groups/group")
         group = groups.select('@id', owner_id)
         return XPath.if_(
             group.count().neq(0),
@@ -632,8 +633,8 @@ class LedgerXpathGenerator(BaseXpathGenerator):
         return "if({0} = 0 or {1} = 0 or {2} = 0, '', {3})".format(
             LedgerdbXpath(session_case_id).ledger().count(),
             LedgerdbXpath(session_case_id).ledger().section(section).count(),
-            LedgerdbXpath(session_case_id).ledger().section(section).entry(u'current()/@id').count(),
-            LedgerdbXpath(session_case_id).ledger().section(section).entry(u'current()/@id')
+            LedgerdbXpath(session_case_id).ledger().section(section).entry('current()/@id').count(),
+            LedgerdbXpath(session_case_id).ledger().section(section).entry('current()/@id')
         )
 
 

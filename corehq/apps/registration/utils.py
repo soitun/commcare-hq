@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 
+from __future__ import unicode_literals
 import logging
 from django.utils.translation import ugettext
 import uuid
@@ -136,7 +137,7 @@ def request_new_domain(request, form, is_new_user=True):
     return new_domain.name
 
 
-REGISTRATION_EMAIL_BODY_HTML = u"""
+REGISTRATION_EMAIL_BODY_HTML = """
 <p><h2>30 Day Free Trial</h2></p>
 <p>Welcome to your 30 day free trial! Evaluate all of our features for the next 30 days to decide which plan is right for you. Unless you subscribe to a paid plan, at the end of the 30 day trial you will be subscribed to the free Community plan. Read more about our pricing plans <a href="{pricing_link}">here</a>.</p>
 <p><h2>Want to learn more?</h2></p>
@@ -152,7 +153,7 @@ REGISTRATION_EMAIL_BODY_HTML = u"""
 </p>
 """
 
-REGISTRATION_EMAIL_BODY_PLAINTEXT = u"""
+REGISTRATION_EMAIL_BODY_PLAINTEXT = """
 30 Day Free Trial
 
 Welcome to your 30 day free trial! Evaluate all of our features for the next 30 days to decide which plan is right for you. Unless you subscribe to a paid plan, at the end of the 30 day trial you will be subscribed to the free Community plan. Read more about our pricing plans:
@@ -218,7 +219,7 @@ def send_new_request_update_email(user, requesting_ip, entity_name, entity_type=
         message = "A brand new user just requested a %s called %s." % (entity_texts[0], entity_name)
     else:
         message = "An existing user just created a new %s called %s." % (entity_texts[0], entity_name)
-    message = u"""%s
+    message = """%s
 
 Details include...
 
@@ -234,7 +235,7 @@ You can view the %s here: %s""" % (
     try:
         recipients = settings.NEW_DOMAIN_RECIPIENTS
         send_mail_async.delay(
-            u"New %s: %s" % (entity_texts[0], entity_name),
+            "New %s: %s" % (entity_texts[0], entity_name),
             message, settings.SERVER_EMAIL, recipients
         )
     except Exception:
