@@ -36,8 +36,18 @@ class WorkflowTask(Task):
     because its subtasks do).
     """
 
-    def __init__(self, rollback_task=None, func=None, *args, **kwargs):
+    def __init__(self, rollback_task=None, pass_result_as=None, func=None, *args, **kwargs):
+        """
+        Instantiate WorkflowTask
+
+        :param rollback_task: A Task instance
+        :param pass_result_as: A parameter name, to be passed as a kwarg to rollback_task
+        :param func: The function this task must run
+        :param args: Arguments to pass to func or self.run()
+        :param kwargs: Keyword arguments to pass to func or self.run()
+        """
         self.rollback_task = rollback_task
+        self.pass_result_as = pass_result_as
         super(WorkflowTask, self).__init__(func, *args, **kwargs)
         self._subtasks = []
 
@@ -70,7 +80,10 @@ def execute_workflow(workflow_queue):
             rollback_task = workflow_task.get_rollback_task()
             if rollback_task:
                 rollback_stack.append(rollback_task)
-            workflow_task.run_func()
+            result = workflow_task.run_func()
+            if workflow_task.pass_result_as and rollback_task:
+                # Useful for rollback tasks that must delete something created by the workflow task
+                rollback_task.kwargs.update({workflow_task.pass_result_as: result})
             for i, subtask in enumerate(workflow_task.get_subtasks()):
                 workflow_queue.insert(i, subtask)
 
