@@ -11,10 +11,10 @@ class Task(object):
     and kwargs that the class was instantiated with.
     """
 
-    def __init__(self, func=None, args=None, kwargs=None):
+    def __init__(self, func=None, *args, **kwargs):
         self.func = func
-        self.args = args or []
-        self.kwargs = kwargs or {}
+        self.args = args
+        self.kwargs = kwargs
 
     def run_func(self):
         if self.func:
@@ -36,9 +36,9 @@ class WorkflowTask(Task):
     because its subtasks do).
     """
 
-    def __init__(self, func=None, args=None, kwargs=None, rollback_task=None):
-        super(WorkflowTask, self).__init__(func, args, kwargs)
+    def __init__(self, rollback_task=None, func=None, *args, **kwargs):
         self.rollback_task = rollback_task
+        super(WorkflowTask, self).__init__(func, *args, **kwargs)
         self._subtasks = []
 
     def get_rollback_task(self):
@@ -46,6 +46,9 @@ class WorkflowTask(Task):
 
     def get_subtasks(self):
         return self._subtasks
+
+
+# TODO: Write wrappers
 
 
 def execute_workflow(workflow_queue):
@@ -67,7 +70,7 @@ def execute_workflow(workflow_queue):
             rollback_task = workflow_task.get_rollback_task()
             if rollback_task:
                 rollback_stack.append(rollback_task)
-            workflow_task.run()
+            workflow_task.run_func()
             for i, subtask in enumerate(workflow_task.get_subtasks()):
                 workflow_queue.insert(i, subtask)
 
@@ -75,7 +78,7 @@ def execute_workflow(workflow_queue):
         errors.append('Workflow failed: {}'.format(workflow_error))
         for rollback_task in reversed(rollback_stack):
             try:
-                rollback_task.run()
+                rollback_task.run_func()
             except Exception as rollback_error:
                 errors.append('Rollback error: {}'.format(rollback_error))
 
