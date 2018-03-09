@@ -73,6 +73,10 @@ class Requests(object):
     def get_url(self, uri):
         return '/'.join((self.base_url.rstrip('/'), uri.lstrip('/')))
 
+    def delete(self, uri, **kwargs):
+        return self.requests.delete(self.get_url(uri),
+                                    auth=(self.username, self.password), **kwargs)
+
     def get(self, uri, *args, **kwargs):
         return self.requests.get(self.get_url(uri), *args,
                                  auth=(self.username, self.password), **kwargs)
@@ -119,6 +123,12 @@ def create_person_attribute(requests, person_uuid, attribute_type_uuid, value):
             'value': value,
         },
     ).json()
+
+
+def delete_person_attribute(requests, person_uuid, attribute_uuid):
+    return requests.delete('/ws/rest/v1/person/{person_uuid}/attribute/{attribute_uuid}'.format(
+        person_uuid=person_uuid, attribute_uuid=attribute_uuid
+    )).json()
 
 
 def update_person_attribute(requests, person_uuid, attribute_uuid, attribute_type_uuid, value):
@@ -254,6 +264,26 @@ def update_person_name(requests, info, openmrs_config, person_uuid, name_uuid):
         )
 
 
+def rollback_person_name(requests, person, openmrs_config):
+    """
+    Reset the name changes previously set by `update_person_name()` back to their original values, which are
+    taken from the patient details that OpenMRS returned at the start of the workflow.
+    """
+    properties = {
+        property_: person['preferredName'][property_]
+        for property_ in openmrs_config.case_config.person_preferred_name.keys()
+        if property_ in NAME_PROPERTIES
+    }
+    if properties:
+        requests.post_with_raise(
+            '/ws/rest/v1/person/{person_uuid}/name/{name_uuid}'.format(
+                person_uuid=person['uuid'],
+                name_uuid=person['preferredName']['uuid'],
+            ),
+            json=properties,
+        )
+
+
 def create_person_address(requests, info, openmrs_config, person_uuid):
     properties = {
         property_: value_source.get_value(info)
@@ -267,6 +297,16 @@ def create_person_address(requests, info, openmrs_config, person_uuid):
         )
 
 
+def delete_person_address(requests, person, address_uuid):
+    # TODO: pass WorkflowTask return value to rollback Task
+    requests.post_with_raise(
+        '/ws/rest/v1/person/{person_uuid}/address/{address_uuid}'.format(
+            person_uuid=person['uuid'],
+            address_uuid=address_uuid,
+        )
+    )
+
+
 def update_person_address(requests, info, openmrs_config, person_uuid, address_uuid):
     properties = {
         property_: value_source.get_value(info)
@@ -278,6 +318,22 @@ def update_person_address(requests, info, openmrs_config, person_uuid, address_u
             '/ws/rest/v1/person/{person_uuid}/address/{address_uuid}'.format(
                 person_uuid=person_uuid,
                 address_uuid=address_uuid,
+            ),
+            json=properties,
+        )
+
+
+def rollback_person_address(requests, person, openmrs_config):
+    properties = {
+        property_: person['preferredAddress'][property_]
+        for property_ in openmrs_config.case_config.person_preferred_address.keys()
+        if property_ in ADDRESS_PROPERTIES
+    }
+    if properties:
+        requests.post_with_raise(
+            '/ws/rest/v1/person/{person_uuid}/address/{address_uuid}'.format(
+                person_uuid=person['uuid'],
+                address_uuid=person['preferredAddress']['uuid'],
             ),
             json=properties,
         )
@@ -318,6 +374,10 @@ def update_person_properties(requests, info, openmrs_config, person_uuid):
 
 
 def rollback_person_properties(requests, person, openmrs_config):
+    """
+    Reset the properties previously set by `update_person_properties()` back to their original values, which are
+    taken from the patient details that OpenMRS returned at the start of the workflow.
+    """
     properties = {
         property_: person[property_]
         for property_ in openmrs_config.case_config.person_properties.keys()
