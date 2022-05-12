@@ -23,7 +23,7 @@
         "bootstrap3-typeahead": "bassjobsen/Bootstrap-3-Typeahead#~3.1.1",
         "calendars": "kbwood/calendars#2.1.2",
         "clipboard": "1.5.15",
-        "crypto-js": "4.0.0",
+        "crypto-js": "4.1.1",
         "css-grid-polyfill-binaries": "FremyCompany/css-grid-polyfill-binaries#1.1.2",
         "d3": "3.5.17",
         "datamaps": "0.5.9",
