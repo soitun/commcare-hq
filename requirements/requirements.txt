@@ -63,7 +63,7 @@ commcaretranslationchecker==0.9.7
     # via -r base-requirements.in
 contextlib2==21.6.0
     # via schema
-cryptography==37.0.4
+cryptography==39.0.0
     # via
     #   jwcrypto
     #   oic
@@ -344,7 +344,7 @@ pyjwt==2.4.0
     #   twilio
 pynacl==1.5.0
     # via pygithub
-pyopenssl==22.0.0
+pyopenssl==23.0.0
     # via -r sso-requirements.in
 pyparsing==3.0.7
     # via httplib2
@@ -422,6 +422,14 @@ schema==0.7.5
     # via -r base-requirements.in
 sentry-sdk==1.9.0
     # via -r base-requirements.in
+setuptools==50.3.0
+    # via
+    #   django-websocket-redis
+    #   gevent
+    #   gunicorn
+    #   jsonschema
+    #   zope-event
+    #   zope-interface
 sh==1.14.2
     # via -r base-requirements.in
 simpleeval @ git+https://github.com/dimagi/simpleeval.git@d85c5a9f972c0f0416a1716bb06d1a3ebc83e7ec
@@ -532,13 +540,3 @@ zope-event==4.5.0
     # via gevent
 zope-interface==5.4.0
     # via gevent
-
-# The following packages are considered to be unsafe in a requirements file:
-setuptools==50.3.0
-    # via
-    #   django-websocket-redis
-    #   gevent
-    #   gunicorn
-    #   jsonschema
-    #   zope-event
-    #   zope-interface
