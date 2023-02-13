@@ -525,7 +525,7 @@ sqlparse==0.3.1
     # via django
 stone==3.3.1
     # via dropbox
-stripe==4.1.0
+stripe==5.1.1
     # via -r base-requirements.in
 suds-py3==1.4.5.0
     # via -r base-requirements.in
