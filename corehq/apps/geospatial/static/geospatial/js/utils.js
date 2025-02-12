@@ -1,8 +1,10 @@
-'use strict';
+
 hqDefine('geospatial/js/utils', [
     'mapbox-gl',
+    'underscore',
 ], function (
-    mapboxgl
+    mapboxgl,
+    _,
 ) {
 
     const DEFAULT_MARKER_OPACITY = 1.0;
@@ -19,7 +21,7 @@ hqDefine('geospatial/js/utils', [
     var uuidv4 = function () {
         // https://stackoverflow.com/questions/105034/how-do-i-create-a-guid-uuid/2117523#2117523
         return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
-            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16),
         );
     };
 
@@ -32,9 +34,13 @@ hqDefine('geospatial/js/utils', [
         popupDiv.setAttribute("data-bind", "template: 'select-case'");
         const popup = new mapboxgl.Popup({ offset: 25, anchor: "bottom" })
             .setLngLat(coordinates)
-            .setDOMContent(popupDiv)
-            .on('open', openEventFunc)
-            .on('close', closeEventFunc);
+            .setDOMContent(popupDiv);
+        if (openEventFunc) {
+            popup.on('open', openEventFunc);
+        }
+        if (closeEventFunc) {
+            popup.on('close', closeEventFunc);
+        }
         return popup;
     };
 

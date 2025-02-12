@@ -18,7 +18,7 @@ hqDefine("geospatial/js/case_grouping_map", [
     alertUser,
     models,
     utils,
-    mapboxgl
+    mapboxgl,
 ) {
 
     const MAPBOX_LAYER_VISIBILITY = {
@@ -188,7 +188,7 @@ hqDefine("geospatial/js/case_grouping_map", [
         };
 
         _.each(caseList, function (caseWithGPS) {
-            const coordinates = caseWithGPS.itemData.coordinates;
+            const coordinates = caseWithGPS.coordinates;
             if (coordinates && coordinates.lat && coordinates.lng) {
                 caseLocationsGeoJson["features"].push(
                     {
@@ -200,7 +200,7 @@ hqDefine("geospatial/js/case_grouping_map", [
                             "type": "Point",
                             "coordinates": [coordinates.lng, coordinates.lat],
                         },
-                    }
+                    },
                 );
             }
         });
