@@ -56,7 +56,7 @@ dependencies = [
     "ethiopian-date-converter",
     "eulxml",
     "geoip2", # USH - used for IPAccessMiddleware
-    "gevent>=24.11.1",
+    "gevent>=26.7.0",
     "greenlet",
     "gunicorn",
     "haversine", # SolTech - Used in Geospatial features
